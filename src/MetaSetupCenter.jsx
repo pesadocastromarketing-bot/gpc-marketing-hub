@@ -41,7 +41,7 @@ export default function MetaSetupCenter({client}){
  async function save(){
   const changed=assigned.filter(a=>a.chosen_brand_id!==a.brand_id).map(a=>({asset_id:a.id,brand_id:a.chosen_brand_id||null}));
   if(!changed.length){setMessage('No hay cambios pendientes.');return}
-  if(!window.confirm('¿Guardar '+changed.length+' asignación(es) de Meta a concesionarios? No se publicará ni modificará ningún anuncio.'))return;
+  if(!window.confirm('¿Guardar '+changed.length+' asignación(es) de Meta a unidades comerciales? No se publicará ni modificará ningún anuncio.'))return;
   setBusy(true);setMessage('');
   try{
    const result=await call('/api/meta/inventory',{assignments:changed});
@@ -66,14 +66,14 @@ export default function MetaSetupCenter({client}){
       <small>{a.stale?'No aparece en la autorización actual':a.chosen_brand_id?'Vinculada a '+brandName(a.chosen_brand_id):a.suggested_brand_id?'Sugerencia: '+brandName(a.suggested_brand_id):'Vinculación pendiente'}
        {a.kind!=='ad_account'&&a.publish_ready===true?' · Permiso de publicación detectado':''}
       </small></div>
-    <select disabled={busy} aria-label={'Concesionario para '+a.name} value={a.chosen_brand_id||''} onChange={e=>setBrand(a.id,e.target.value)}>
-     <option value="">Sin concesionario</option>{brands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+    <select disabled={busy} aria-label={'Unidad comercial para '+a.name} value={a.chosen_brand_id||''} onChange={e=>setBrand(a.id,e.target.value)}>
+     <option value="">Sin asignar</option><optgroup label="Concesionarios">{brands.filter(b=>b.unit_type==='dealership').map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</optgroup><optgroup label="Usados">{brands.filter(b=>b.unit_type==='used').map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</optgroup>
     </select>
   </div>;
  }
  const toDisplay=assigned.filter(a=>!filter.trim()||[a.name,a.external_id,brandName(a.chosen_brand_id)].some(x=>String(x||'').toLowerCase().includes(filter.toLowerCase())));
  return <div className="gpc-meta-wizard">
-  <section className="gpc-wizard-intro"><div className="gpc-wizard-head"><div><span className="gpc-wizard-eyebrow">GPC MARKETING HUB · CONEXIONES</span><h2>Configurá todo Meta desde un solo lugar</h2><p>Reutilizamos la autorización publicitaria y detectamos las páginas e Instagram disponibles. Vinculás los concesionarios en lote, sin cargar IDs ni tokens.</p></div><button className="primary" disabled={busy} onClick={sync}><RefreshCw size={17}/> {busy?'Sincronizando...':'Sincronizar Meta'}</button></div>
+  <section className="gpc-wizard-intro"><div className="gpc-wizard-head"><div><span className="gpc-wizard-eyebrow">GPC MARKETING HUB · CONEXIONES</span><h2>Configurá Meta para las 8 unidades comerciales</h2><p>Reutilizamos la autorización publicitaria y detectamos las páginas e Instagram disponibles. Asociás las cuentas a los 6 concesionarios y las 2 unidades de usados en lote, sin cargar IDs ni tokens.</p></div><button className="primary" disabled={busy} onClick={sync}><RefreshCw size={17}/> {busy?'Sincronizando...':'Sincronizar Meta'}</button></div>
    <div className="gpc-wizard-stats">
     <div><Megaphone size={20}/><strong>{counts.ads||0}</strong><span>cuentas publicitarias</span><small>{connection.ads?'Conectadas':'Pendiente'}</small></div>
     <div><Facebook size={20}/><strong>{counts.pages||0}</strong><span>páginas de Facebook</span><small>{connection.facebook?'Autorización registrada':'Requiere autorización'}</small></div>
@@ -93,7 +93,7 @@ export default function MetaSetupCenter({client}){
    <p className="gpc-wizard-footnote">La autorización previa de anuncios se conserva. Si Meta no ofrece todos los activos, consultá Detalles de sincronización al final: puede faltar aprobación o acceso a alguna página. Los contenidos no se publican por conectar las cuentas.</p>
   </section>
   <section className="gpc-wizard-accounts">
-   <div className="gpc-wizard-section-top"><span className="gpc-wizard-step">2</span><div><h3>Ordenar cuentas por concesionario</h3><p>El HUB propuso {confident.length} coincidencias y encontró {missing.length} activos sin asignar. Ningún destino se publica sin tu confirmación.</p></div></div>
+   <div className="gpc-wizard-section-top"><span className="gpc-wizard-step">2</span><div><h3>Asignar cuentas por unidad comercial</h3><p>El HUB propuso {confident.length} coincidencias y encontró {missing.length} activos sin asignar. Ningún destino se publica sin tu confirmación.</p></div></div>
    <div className="gpc-wizard-tools">
     <button className="secondary" disabled={busy||!confident.length} onClick={propose}><Check size={15}/> Aplicar sugerencias ({confident.length})</button>
     <button className="primary" disabled={busy||!assigned.some(a=>a.chosen_brand_id!==a.brand_id)} onClick={save}><ShieldCheck size={15}/> Guardar conexiones</button>
