@@ -249,3 +249,10 @@
 .gpc-wizard-warnings{padding:14px;background:#fff9ef;border:1px solid #f3e6c7;color:#83643a;border-radius:9px;font-size:12px}
 @media(max-width:800px){.gpc-wizard-head{flex-direction:column}.gpc-wizard-head .primary{width:100%;justify-content:center}.gpc-wizard-tools{flex-direction:column;align-items:stretch}.gpc-wizard-tools button{justify-content:center}.gpc-wizard-search{margin:0;width:100%}}
 @media(max-width:560px){.gpc-wizard-intro,.gpc-wizard-permissions,.gpc-wizard-accounts{padding:13px}.gpc-wizard-stats{gap:5px}.gpc-wizard-stats>div{padding:10px;gap:6px}.gpc-wizard-stats strong{font-size:22px}.gpc-wizard-stats span{font-size:10px}.gpc-wizard-stats small{font-size:9px}.gpc-wizard-permission-row{flex-wrap:wrap}.gpc-wizard-permission-row button{width:100%;justify-content:center}.gpc-wizard-asset{flex-wrap:wrap;padding:11px}.gpc-wizard-asset-detail{flex-basis:calc(100% - 55px)}.gpc-wizard-asset select{max-width:none;width:100%;margin-left:46px}}
+
+.hub-destination-picker{display:grid;gap:10px;border:1px solid #d6e2f7;background:#f5f9ff;border-radius:10px;padding:14px}
+.hub-destination-picker>strong{font-size:13px;color:#2d4f85}
+.hub-destination-picker>p{font-size:11px;color:#6d83a5;line-height:1.5;margin:0}
+.hub-destination-picker .hub-check-list label{background:white}
+.hub-destination-picker .hub-check-list small{font-size:10px;color:#7f92af}
+.hub-destination-picker button.quiet{justify-self:start;font-size:12px}
