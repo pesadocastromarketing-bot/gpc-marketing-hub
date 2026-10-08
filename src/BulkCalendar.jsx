@@ -1,7 +1,8 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import {CalendarDays,UploadCloud,Plus,Copy,Check,ChevronLeft,ChevronRight,Trash2,Image as ImageIcon,Video,Clock,Layers,RefreshCw} from 'lucide-react';
+import {BUSINESS_UNITS} from './businessUnits.js';
 
-const BRAND_NAMES={'vw':'Pesado Castro VW','chevy':'Chevromax','renault':'Circular Renault','toyota':'Sakura Toyota','used':'Usados GPC'};
+const BRAND_NAMES=Object.fromEntries(BUSINESS_UNITS.map(u=>[u.id,u.name]));
 const two=x=>String(x).padStart(2,'0');
 const dateKey=d=>[d.getFullYear(),two(d.getMonth()+1),two(d.getDate())].join('-');
 const dateOffset=(value,n)=>{const d=new Date(value+'T12:00:00');d.setDate(d.getDate()+n);return dateKey(d)};
@@ -14,7 +15,7 @@ const maxMediaCount=10;
 function moneyDate(s){return new Date(s+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'})}
 
 export default function BulkCalendar({client,user,organizationId,brandIds,brandFilter,onChangeCount,openSignal=0}){
- const allBrands=Object.keys(brandIds).filter(x=>brandIds[x]).map(x=>({code:x,id:brandIds[x],name:BRAND_NAMES[x]||x}));
+ const allBrands=BUSINESS_UNITS.filter(u=>brandIds[u.id]).map(u=>({code:u.id,id:brandIds[u.id],name:u.name,type:u.type}));
  const [month,setMonth]=useState(new Date(new Date().getFullYear(),new Date().getMonth(),1));
  const [jobs,setJobs]=useState([]);const [items,setItems]=useState([]),[media,setMedia]=useState([]),[loading,setLoading]=useState(false),[uploading,setUploading]=useState(false),[saving,setSaving]=useState(false),[message,setMessage]=useState('');
  const [showComposer,setShowComposer]=useState(false),[selectedBrands,setSelectedBrands]=useState([]),[selectedChannels,setSelectedChannels]=useState(['Instagram','Facebook']);
@@ -167,7 +168,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
  }
  return <div className="hub-calendar">
   <section className="hub-calendar-top">
-   <div><h3>Calendario editorial multicuenta</h3><p>Una creatividad, varias marcas, varias redes y fechas. Todo en un solo paso.</p></div>
+   <div><h3>Calendario editorial multicuenta</h3><p>Una creatividad para cualquiera de los 6 concesionarios y 2 unidades de usados, en varias fechas y redes.</p></div>
    <button className="primary" onClick={()=>setShowComposer(v=>!v)}><Plus size={16}/> {showComposer?'Cerrar editor':'Crear lote de publicaciones'}</button>
   </section>
   {message&&<p className="hub-cal-notice" role="status">{message}</p>}
@@ -180,7 +181,12 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    <div className="hub-composer-two"><label>Título interno<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Ej. Amarok tasa 0%"/></label><label>Formato<select value={format} onChange={e=>setFormat(e.target.value)}><option>Imagen</option><option>Carrusel</option><option>Reel</option><option>Historia</option></select></label></div>
    <label className="hub-wide-label">Copy de la publicación<textarea rows="3" placeholder="Texto que se reutilizará en todas las fechas y cuentas..." value={copy} onChange={e=>setCopy(e.target.value)}/></label>
    <div className="hub-composer-heading"><h3>2. Elegí las marcas y los canales</h3><span>Podés seleccionar varios destinos</span></div>
-   <div className="hub-check-list">{allBrands.map(b=><label key={b.id}><input type="checkbox" checked={selectedBrands.includes(b.code)} onChange={e=>setSelectedBrands(v=>e.target.checked?[...v,b.code]:v.filter(x=>x!==b.code))}/>{b.name}</label>)}</div>
+   <div className="hub-business-units">
+    {[{type:'dealership',label:'Concesionarios (6)'},{type:'used',label:'Usados (2)'}].map(group=><div key={group.type}>
+     <strong>{group.label}</strong>
+     <div className="hub-check-list">{allBrands.filter(b=>b.type===group.type).map(b=><label key={b.id}><input type="checkbox" checked={selectedBrands.includes(b.code)} onChange={e=>setSelectedBrands(v=>e.target.checked?[...v,b.code]:v.filter(x=>x!==b.code))}/>{b.name}</label>)}</div>
+    </div>)}
+   </div>
    <div className="hub-check-list">{channels.map(channel=><label key={channel}><input type="checkbox" checked={selectedChannels.includes(channel)} onChange={e=>setSelectedChannels(v=>e.target.checked?[...v,channel]:v.filter(x=>x!==channel))}/>{channel}</label>)}</div>
    {socialAssets.length>0&&<div className="hub-destination-picker"><strong>Destinos exactos (opcional)</strong><p>Si una marca tiene varias páginas o perfiles, elegí exactamente dónde publicar. Esto reemplaza la selección de marcas y redes de arriba.</p><div className="hub-check-list">{socialAssets.map(a=><label key={a.id}><input type="checkbox" checked={exactDestinations.includes(a.id)} onChange={e=>setExactDestinations(old=>e.target.checked?[...old,a.id]:old.filter(x=>x!==a.id))}/>{a.kind==='page'?'Facebook':'Instagram'} · {a.name} <small>({BRAND_NAMES[allBrands.find(b=>b.id===a.brand_id)?.code]||'Marca'})</small></label>)}</div>{exactDestinations.length>0&&<button className="quiet" onClick={()=>setExactDestinations([])}>Usar marcas y redes en vez de perfiles exactos</button>}</div>}
    <div className="hub-composer-heading"><h3>3. Elegí todas las fechas</h3><span>Hora de Argentina (UTC−3)</span></div>
