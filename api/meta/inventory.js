@@ -167,7 +167,7 @@ export default async function handler(req,res){
   rows.sort((a,b)=>(order[a.kind]??5)-(order[b.kind]??5)||(a.name||'').localeCompare(b.name||''));
   return res.status(200).json({
     assets:rows,brands:brandRows||[],
-    connection:{ads:adsConns.length>0,facebook:socialConns.length>0,
+    connection:{ads:adsConns.length>0,facebook:socialConns.some(x=>(x.scopes||[]).includes('pages_show_list')),
       instagram:canPublishIg,pages_publish:canPublishFb},
     counts:{
       ads:rows.filter(x=>x.kind==='ad_account'&&!x.stale).length,
