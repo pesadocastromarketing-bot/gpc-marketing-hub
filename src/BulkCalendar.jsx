@@ -16,7 +16,7 @@ function moneyDate(s){return new Date(s+'T12:00:00').toLocaleDateString('es-AR',
 export default function BulkCalendar({client,user,organizationId,brandIds,brandFilter,onChangeCount,openSignal=0}){
  const allBrands=Object.keys(brandIds).filter(x=>brandIds[x]).map(x=>({code:x,id:brandIds[x],name:BRAND_NAMES[x]||x}));
  const [month,setMonth]=useState(new Date(new Date().getFullYear(),new Date().getMonth(),1));
- const [items,setItems]=useState([]),[media,setMedia]=useState([]),[loading,setLoading]=useState(false),[uploading,setUploading]=useState(false),[saving,setSaving]=useState(false),[message,setMessage]=useState('');
+ const [jobs,setJobs]=useState([]);const [items,setItems]=useState([]),[media,setMedia]=useState([]),[loading,setLoading]=useState(false),[uploading,setUploading]=useState(false),[saving,setSaving]=useState(false),[message,setMessage]=useState('');
  const [showComposer,setShowComposer]=useState(false),[selectedBrands,setSelectedBrands]=useState([]),[selectedChannels,setSelectedChannels]=useState(['Instagram','Facebook']);
  const [dates,setDates]=useState([dateOffset(today,1)]),[manualDate,setManualDate]=useState(dateOffset(today,1)),[time,setTime]=useState('18:00');
  const [title,setTitle]=useState(''),[copy,setCopy]=useState(''),[format,setFormat]=useState('Imagen'),[selectedMedia,setSelectedMedia]=useState([]),[planMode,setPlanMode]=useState('draft'),[filterDay,setFilterDay]=useState('');
@@ -26,14 +26,16 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
  useEffect(()=>{if(openSignal>0)setShowComposer(true)},[openSignal]);
  async function refresh(){
   setLoading(true);
-  const [a,b]=await Promise.all([
+  const [a,b,c]=await Promise.all([
    client.from('hub_content').select('id,title,copy_text,format,scheduled_date,scheduled_time,channels,brand_id,media_paths,batch_id,publication_mode,status').eq('organization_id',organizationId).order('scheduled_date',{ascending:true}).limit(1500),
-   client.from('hub_media').select('storage_path,filename,mime_type,size_bytes').eq('organization_id',organizationId).order('created_at',{ascending:false}).limit(100)
+   client.from('hub_media').select('storage_path,filename,mime_type,size_bytes').eq('organization_id',organizationId).order('created_at',{ascending:false}).limit(100),
+   client.from('hub_publication_jobs').select('id,content_id,status,error_message,external_post_id,scheduled_for').eq('organization_id',organizationId).order('created_at',{ascending:false}).limit(1000)
   ]);
   if(a.error)setMessage('No se pudo cargar el calendario: '+a.error.message);
   else {setItems(a.data||[]);onChangeCount?.((a.data||[]).length)}
   if(b.error)setMessage('No se pudo cargar la biblioteca: '+b.error.message);
   else setMedia(b.data||[]);
+  if(!c.error)setJobs(c.data||[]);
   setLoading(false);
  }
  useEffect(()=>{refresh()},[organizationId]);
@@ -177,7 +179,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    {(filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth).slice(0,150).map(p=><div key={p.id} className="hub-cal-entry">
      <input aria-label={'Seleccionar '+p.title} type="checkbox" checked={selectedRows.includes(p.id)} onChange={e=>setSelectedRows(v=>e.target.checked?[...v,p.id]:v.filter(x=>x!==p.id))}/>
      {p.media_paths?.length&&mediaUrls[p.media_paths[0]]&&p.format!=='Reel'?<img src={mediaUrls[p.media_paths[0]]} alt="" loading="lazy"/>:<span className="hub-cal-entry-image"><ImageIcon size={19}/></span>}
-     <div><strong>{p.title}</strong><small>{moneyDate(p.scheduled_date)} · {(p.scheduled_time||'18:00').slice(0,5)} · {BRAND_NAMES[allBrands.find(b=>b.id===p.brand_id)?.code]||'Marca'} · {(p.channels||[]).join(', ')}</small><small>{p.status==='published'?'Publicado':p.status==='failed'?'Error de publicación':p.status==='scheduled'?'Programado en Meta':p.publication_mode==='pending_authorization'?'Pendiente de autorización Meta':'Borrador'} · {(p.media_paths||[]).length} archivo(s)</small></div>
+     <div><strong>{p.title}</strong><small>{moneyDate(p.scheduled_date)} · {(p.scheduled_time||'18:00').slice(0,5)} · {BRAND_NAMES[allBrands.find(b=>b.id===p.brand_id)?.code]||'Marca'} · {(p.channels||[]).join(', ')}</small><small>{(jobs.find(j=>j.content_id===p.id)?.status==='published'||p.status==='published')?'Publicado':(jobs.find(j=>j.content_id===p.id)?.status==='failed'||p.status==='failed')?'Error de publicación':jobs.find(j=>j.content_id===p.id)?.status==='publishing'?'En proceso en Meta':(jobs.find(j=>j.content_id===p.id)?.status==='queued'||p.status==='scheduled')?'Programado en Meta':p.publication_mode==='pending_authorization'?'Pendiente de autorización Meta':'Borrador'} · {(p.media_paths||[]).length} archivo(s)</small>{jobs.find(j=>j.content_id===p.id)?.error_message&&<small style={{color:'#c13245'}}>Error: {jobs.find(j=>j.content_id===p.id)?.error_message}</small>}</div>
      <button title="Replicar esta publicación en otras fechas" className="secondary" onClick={()=>clone(p)}><Copy size={16}/> Replicar</button>
    </div>)}
    {!loading&&(filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth).length===0&&<p className="hub-calendar-empty">No hay publicaciones en estas fechas. Creá un lote para empezar.</p>}
