@@ -81,13 +81,7 @@ export default async function handler(req,res){
     if(listError)throw listError;
     if(existing?.length!==changes.length)return res.status(403).json({error:'Una cuenta no pertenece a tu organización'});
     const existingById=new Map(existing.map(x=>[x.id,x]));
-    // Only validate duplicates of publishing destinations; multiple ad accounts per brand are allowed.
-    const {data:otherAssets,error:othersError}=await db.from('hub_meta_assets').select('id,brand_id,kind').eq('organization_id',org).in('kind',['page','instagram_account']);
-    if(othersError)throw othersError;
-    const changeMap=new Map(changes.map(x=>[x.asset_id,x.brand_id]));
-    const toBeMapped=(otherAssets||[]).map(x=>({...x,brand_id:changeMap.has(x.id)?changeMap.get(x.id):x.brand_id})).filter(x=>x.brand_id);
-    const duplicate=toBeMapped.find(x=>toBeMapped.filter(y=>y.brand_id===x.brand_id&&y.kind===x.kind).length>1);
-    if(duplicate)return res.status(409).json({error:'Una marca tiene dos páginas o perfiles Instagram para el mismo canal. Revisá esa asignación antes de guardar.'});
+    // Multiple pages or Instagram profiles can belong to the same brand. Each keeps its own Meta ID.
     let changed=0;const errors=[];
     for(const x of changes){
       if(existingById.get(x.asset_id).brand_id===x.brand_id)continue;
