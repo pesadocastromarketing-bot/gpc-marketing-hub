@@ -111,6 +111,22 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   else {setMessage('Se crearon '+rows.length+' publicaciones en Supabase. La salida a Meta sigue pendiente de autorización.');setShowComposer(false);setDates([dateOffset(today,1)]);setSelectedMedia([]);setTitle('');setCopy('');await refresh();}
   setSaving(false);
  }
+ async function scheduleSelected(){
+  if(!selectedRows.length)return;
+  if(selectedRows.length>100){setMessage('Máximo 100 publicaciones para programar en un lote.');return}
+  if(!window.confirm('ATENCIÓN: Vas a programar '+selectedRows.length+' publicación(es) para que Meta las publique automáticamente en las fechas y redes correspondientes. ¿Confirmás?'))return;
+  setSaving(true);setMessage('Comprobando destinos y permisos de Meta...');
+  try{
+   const {data:{session}}=await client.auth.getSession();
+   const response=await fetch('/api/social/schedule',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session?.access_token},body:JSON.stringify({ids:selectedRows,confirmation:'PROGRAMAR'})});
+   const result=await response.json();if(!response.ok)throw Error(result.error||'Error al programar');
+   const failures=(result.results||[]).filter(x=>x.status==='error');
+   setMessage('Programadas '+result.scheduled+' de '+result.total+' publicación(es).'+(failures.length?' Sin programar: '+failures.slice(0,4).map(x=>x.message).join(' | '):''));
+   setSelectedRows(failures.map(x=>x.id));
+   await refresh();
+  }catch(e){setMessage('No se pudieron programar: '+e.message)}
+  finally{setSaving(false)}
+ }
  async function removeSelected(){
   if(!selectedRows.length||!window.confirm('¿Eliminar '+selectedRows.length+' borradores seleccionados del calendario? Los archivos originales permanecerán guardados.'))return;
   const {error}=await client.from('hub_content').delete().eq('organization_id',organizationId).in('id',selectedRows);
@@ -157,11 +173,11 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    <div className="hub-cal-grid">{calendarCells(month).map((d,i)=>{const key=dateKey(d);const dayItems=dateMap.get(key)||[];return <button key={i} className={'hub-cal-cell '+(d.getMonth()!==month.getMonth()?'outside ':'')+(key===today?'today ':'')+(filterDay===key?'chosen':'')} onClick={()=>setFilterDay(old=>old===key?'':key)}><strong>{d.getDate()}</strong>{dayItems.length>0&&<span>{dayItems.length} publicaciones</span>}{dayItems.slice(0,2).map(x=><small key={x.id}>{x.title}</small>)}</button>})}</div>
   </section>
   <section className="hub-calendar-entries">
-   <div className="hub-cal-listhead"><h3>{filterDay?'Publicaciones del '+moneyDate(filterDay):'Publicaciones de '+month.toLocaleDateString('es-AR',{month:'long',year:'numeric'})}</h3><span>{(filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth).length} resultados</span>{selectedRows.length>0&&<button className="secondary" onClick={removeSelected}><Trash2 size={15}/> Eliminar {selectedRows.length}</button>}</div>
+   <div className="hub-cal-listhead"><h3>{filterDay?'Publicaciones del '+moneyDate(filterDay):'Publicaciones de '+month.toLocaleDateString('es-AR',{month:'long',year:'numeric'})}</h3><span>{(filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth).length} resultados</span><button className="secondary" onClick={()=>{const shown=(filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth).slice(0,100);setSelectedRows(shown.every(x=>selectedRows.includes(x.id))?[]:shown.map(x=>x.id))}}>{selectedRows.length?'Quitar selección':'Seleccionar visibles'}</button>{selectedRows.length>0&&<button className="primary" disabled={saving} onClick={scheduleSelected}><Clock size={15}/> Programar {selectedRows.length} en Meta</button>}{selectedRows.length>0&&<button className="secondary" onClick={removeSelected}><Trash2 size={15}/> Eliminar {selectedRows.length}</button>}</div>
    {(filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth).slice(0,150).map(p=><div key={p.id} className="hub-cal-entry">
      <input aria-label={'Seleccionar '+p.title} type="checkbox" checked={selectedRows.includes(p.id)} onChange={e=>setSelectedRows(v=>e.target.checked?[...v,p.id]:v.filter(x=>x!==p.id))}/>
-     {p.media_paths?.length&&mediaUrls[p.media_paths[0]]?<img src={mediaUrls[p.media_paths[0]]} alt="" loading="lazy"/>:<span className="hub-cal-entry-image"><ImageIcon size={19}/></span>}
-     <div><strong>{p.title}</strong><small>{moneyDate(p.scheduled_date)} · {(p.scheduled_time||'18:00').slice(0,5)} · {BRAND_NAMES[allBrands.find(b=>b.id===p.brand_id)?.code]||'Marca'} · {(p.channels||[]).join(', ')}</small><small>{p.publication_mode==='pending_authorization'?'Pendiente de autorización Meta':'Borrador'} · {(p.media_paths||[]).length} archivo(s)</small></div>
+     {p.media_paths?.length&&mediaUrls[p.media_paths[0]]&&p.format!=='Reel'?<img src={mediaUrls[p.media_paths[0]]} alt="" loading="lazy"/>:<span className="hub-cal-entry-image"><ImageIcon size={19}/></span>}
+     <div><strong>{p.title}</strong><small>{moneyDate(p.scheduled_date)} · {(p.scheduled_time||'18:00').slice(0,5)} · {BRAND_NAMES[allBrands.find(b=>b.id===p.brand_id)?.code]||'Marca'} · {(p.channels||[]).join(', ')}</small><small>{p.status==='published'?'Publicado':p.status==='failed'?'Error de publicación':p.status==='scheduled'?'Programado en Meta':p.publication_mode==='pending_authorization'?'Pendiente de autorización Meta':'Borrador'} · {(p.media_paths||[]).length} archivo(s)</small></div>
      <button title="Replicar esta publicación en otras fechas" className="secondary" onClick={()=>clone(p)}><Copy size={16}/> Replicar</button>
    </div>)}
    {!loading&&(filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth).length===0&&<p className="hub-calendar-empty">No hay publicaciones en estas fechas. Creá un lote para empezar.</p>}
