@@ -15,14 +15,14 @@ export default async function handler(req,res){
   if(memberError||!member)return res.status(403).json({error:'Workspace admin access required'});
   if(!APP_ID||!process.env.META_APP_SECRET||!process.env.META_TOKEN_ENCRYPTION_KEY)return res.status(503).json({error:'Meta backend environment not configured'});
   const state=randomBytes(32).toString('hex');
-  const flow=['ads_manage','social_fb','social_ig'].includes(req.body?.mode)?req.body.mode:'ads';
+  const flow=['ads_manage','social_fb','social_ig','social_publish'].includes(req.body?.mode)?req.body.mode:'ads';
   const {error}=await db.rpc('hub_oauth_state_create_flow',{p_hash:digest(state),p_user:user.id,p_org:member.organization_id,p_expires:new Date(Date.now()+10*60*1000).toISOString(),p_flow:flow});
   if(error)throw error;
   const url=new URL('https://www.facebook.com/v25.0/dialog/oauth');
   url.searchParams.set('client_id',APP_ID);
   url.searchParams.set('redirect_uri',REDIRECT);
   url.searchParams.set('response_type','code');
-  const scopeMode=flow==='ads_manage'?'ads_read,ads_management':flow==='social_fb'?'pages_show_list,pages_read_engagement,pages_manage_posts':flow==='social_ig'?'pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish':SCOPES;
+  const scopeMode=flow==='ads_manage'?'ads_read,ads_management':flow==='social_fb'?'pages_show_list,pages_read_engagement':flow==='social_publish'?'pages_show_list,pages_read_engagement,pages_manage_posts':flow==='social_ig'?'pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish':SCOPES;
   url.searchParams.set('scope',scopeMode);
   url.searchParams.set('state',state);
   if(flow!=='ads')url.searchParams.set('auth_type','rerequest');
