@@ -143,7 +143,13 @@ export default async function handler(req,res){
     }catch(e){warnings.push('Páginas: '+String(e.message).slice(0,130))}
   }
   for(const row of persisted){
-    const {error:e}=await db.from('hub_meta_assets').upsert(row,{onConflict:'organization_id,kind,external_id',ignoreDuplicates:false});
+    const {data:existing,error:readError}=await db.from('hub_meta_assets').select('id')
+      .eq('organization_id',org).eq('kind',row.kind).eq('external_id',row.external_id).maybeSingle();
+    if(readError){warnings.push('No se pudo comprobar '+row.display_name);continue}
+    // Preserve existing manual mappings. A sync must never overwrite brand_id.
+    const query=existing?db.from('hub_meta_assets').update({display_name:row.display_name,metadata:row.metadata}).eq('id',existing.id):
+      db.from('hub_meta_assets').insert({...row,brand_id:null});
+    const {error:e}=await query;
     if(e)warnings.push(row.kind+': '+e.message.slice(0,100));
   }
   const {data:current,error:currentError}=await db.from('hub_meta_assets')
