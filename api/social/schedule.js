@@ -34,8 +34,13 @@ export default async function handler(req,res){
    if(scheduled.getTime()>Date.now()+365*86400000)throw Error('La programación no puede superar un año');
    const kind=channel==='Facebook'?'page':'instagram_account';
    const candidates=(assets||[]).filter(a=>a.brand_id===p.brand_id&&a.kind===kind);
-   if(candidates.length!==1)throw Error(candidates.length?'Hay varios destinos de esta marca; revisá su vinculación':'Vinculá una cuenta de '+channel+' a esta marca en Configuración');
-   asset=candidates[0];
+   if(p.target_asset_id){
+    asset=candidates.find(a=>a.id===p.target_asset_id);
+    if(!asset)throw Error('El destino elegido no corresponde a la marca y red social de la publicación');
+   }else{
+    if(candidates.length!==1)throw Error(candidates.length?'Esta marca tiene varios perfiles; elegí el destino exacto al crear el lote':'Vinculá una cuenta de '+channel+' a esta marca en Configuración');
+    asset=candidates[0];
+   }
    if(kind==='page'&&!asset.metadata?.tasks?.includes('CREATE_CONTENT'))throw Error('Meta no concedió la tarea CREATE_CONTENT en esta página');
    if(!p.media_paths?.length)throw Error('Subí primero la creatividad');
    const {data:media,error:mediaError}=await db.from('hub_media').select('storage_path,mime_type').eq('organization_id',membership.organization_id).in('storage_path',p.media_paths);
