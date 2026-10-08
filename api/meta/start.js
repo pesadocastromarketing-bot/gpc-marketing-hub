@@ -15,7 +15,7 @@ export default async function handler(req,res){
   if(memberError||!member)return res.status(403).json({error:'Workspace admin access required'});
   if(!APP_ID||!process.env.META_APP_SECRET||!process.env.META_TOKEN_ENCRYPTION_KEY)return res.status(503).json({error:'Meta backend environment not configured'});
   const state=randomBytes(32).toString('hex');
-  const {error}=await db.schema('hub_private').from('meta_oauth_states').insert({state_hash:digest(state),user_id:user.id,organization_id:member.organization_id,expires_at:new Date(Date.now()+10*60*1000).toISOString()});
+  const {error}=await db.rpc('hub_oauth_state_create',{p_hash:digest(state),p_user:user.id,p_org:member.organization_id,p_expires:new Date(Date.now()+10*60*1000).toISOString()});
   if(error)throw error;
   const url=new URL('https://www.facebook.com/v25.0/dialog/oauth');
   url.searchParams.set('client_id',APP_ID);
