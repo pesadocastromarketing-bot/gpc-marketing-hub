@@ -73,7 +73,7 @@ export default async function handler(req,res){
   const {data:member,error:memberError}=await db.from('hub_members').select('organization_id,role').eq('user_id',user.id).limit(1).maybeSingle();
   if(memberError||!member)return res.status(403).json({error:'Sin acceso a workspace'});
   const org=member.organization_id;
-  const {data:brandRows,error:brandsError}=await db.from('hub_brands').select('id,name').eq('organization_id',org);
+  const {data:brandRows,error:brandsError}=await db.from('hub_brands').select('id,name,unit_type').eq('organization_id',org).order('unit_type').order('name');
   if(brandsError)throw brandsError;
   if(req.method==='POST'){
     if(!['owner','admin'].includes(member.role))return res.status(403).json({error:'Solo administradores pueden aplicar la configuración'});
