@@ -182,3 +182,19 @@
 .hub-ads-bulk-error{padding:10px 20px;font-size:12px;color:#b42d3b}
 .hub-bulk-result{display:flex;gap:10px;align-items:center;color:#1d7f51;font-size:14px;margin:16px 0}
 @media(max-width:700px){.hub-composer{padding:14px}.hub-composer-two{grid-template-columns:1fr}.hub-calendar-top{padding:17px}.hub-calendar-top .primary{width:100%;justify-content:center}.hub-cal-cell{min-height:75px;padding:4px}.hub-cal-cell>small{display:none}.hub-cal-cell>span{font-size:9px}.hub-date-controls input[type=date]{max-width:none}.hub-submit{align-items:stretch;flex-direction:column}.hub-submit .primary{justify-content:center}.hub-cal-entry{gap:9px;padding:9px}.hub-cal-entry button.secondary{font-size:0}.hub-cal-entry button.secondary svg{width:17px}.hub-ads-filterbar input,.hub-ads-filterbar select{flex:1;min-width:135px;max-width:none}}
+
+/* Social account connections */
+.hub-social-panel{margin-bottom:20px}
+.hub-social-body{padding:20px 24px;display:grid;gap:13px}
+.hub-social-body>p{font-size:12px;color:#72819b;margin:0;line-height:1.55}
+.hub-social-actions{display:flex;gap:10px;flex-wrap:wrap}
+.hub-social-actions .primary,.hub-social-actions .secondary{display:inline-flex;align-items:center;gap:7px}
+.hub-social-note{font-size:11px;color:#8b98ab;line-height:1.5}
+.hub-social-muted{font-size:12px;color:#8190a3;background:#f5f7fb;padding:15px;border-radius:8px}
+.hub-social-row{display:flex;gap:12px;align-items:center;padding:14px;border:1px solid #e0e8f3;border-radius:10px}
+.hub-social-row>span{display:grid;place-items:center;background:#eef4ff;color:#5178c3;padding:11px;border-radius:9px}
+.hub-social-row>div{flex:1;display:grid;gap:5px;min-width:0}
+.hub-social-row strong{font-size:13px;overflow-wrap:anywhere}
+.hub-social-row small{color:#8a97ab;font-size:10px}
+.hub-social-row select{border:1px solid #dbe4ef;border-radius:8px;padding:10px;max-width:240px;width:100%;font-size:12px;background:white}
+@media(max-width:680px){.hub-social-body{padding:13px}.hub-social-row{flex-wrap:wrap}.hub-social-row select{max-width:none}.hub-social-actions button{width:100%;justify-content:center}}
