@@ -44,6 +44,8 @@ export default async function handler(req,res){
    if(p.format==='Carrusel'&&(media.length<2||media.length>10||media.some(m=>!m.mime_type.startsWith('image/'))))throw Error('Carrusel requiere entre 2 y 10 imágenes');
    if(p.format==='Reel'&&(media.length!==1||!media[0].mime_type.startsWith('video/')))throw Error('Reel requiere un video');
    if(p.format==='Historia')throw Error('Historias aún no están habilitadas en el publicador');
+   if(channel==='Instagram'&&['Imagen','Carrusel'].includes(p.format)&&media.some(m=>m.mime_type!=='image/jpeg'))throw Error('Instagram requiere imágenes JPG; convertí las imágenes antes de programar');
+   if(channel==='Facebook'&&['Imagen','Carrusel'].includes(p.format)&&media.some(m=>!['image/jpeg','image/png'].includes(m.mime_type)))throw Error('Facebook requiere imágenes JPG o PNG');
    // Confirm that the current OAuth social connection still exists; worker checks permissions again before publish.
    const {data:tokens}=await db.rpc('hub_social_tokens');
    if(!(tokens||[]).some(t=>t.organization_id===membership.organization_id&&(!t.expires_at||Date.parse(t.expires_at)>Date.now())))throw Error('Autorizá el acceso de publicación en Meta');
