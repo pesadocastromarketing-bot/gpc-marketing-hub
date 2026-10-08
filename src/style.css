@@ -256,3 +256,41 @@
 .hub-destination-picker .hub-check-list label{background:white}
 .hub-destination-picker .hub-check-list small{font-size:10px;color:#7f92af}
 .hub-destination-picker button.quiet{justify-self:start;font-size:12px}
+
+/* Account selector overlay is rendered in document.body.
+   This avoids clipping from the advertising .panel { overflow: hidden }. */
+.gpc-account-overlay{
+  position:fixed;
+  inset:0;
+  z-index:10000;
+  background:transparent;
+}
+.gpc-account-popover-portal{
+  position:absolute;
+  top:auto;
+  bottom:auto;
+  left:auto;
+  right:auto;
+  max-width:none;
+  max-height:calc(100dvh - 24px);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  z-index:1;
+}
+.gpc-account-popover-portal .gpc-account-list{
+  max-height:min(310px,45dvh);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+}
+@media(max-width:700px){
+  .gpc-account-overlay{background:#14213b40}
+  .gpc-account-popover-portal{
+    position:absolute;
+    top:auto;
+    left:auto;
+    width:auto;
+    max-height:82dvh;
+    box-shadow:0 20px 50px #101e3a35;
+  }
+  .gpc-account-popover-portal .gpc-account-list{max-height:48dvh}
+}
