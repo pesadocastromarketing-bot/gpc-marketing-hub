@@ -43,18 +43,18 @@ async function advertising(token){
 }
 function suggestBrand(name,brandRows){
  const s=(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
- // Never infer dealership solely from the manufacturer name or "Pesado Castro".
- // Renault Centro and Circular, and Chevromax and Chevrolet Pesado Castro,
- // operate as different units with independently authorized destinations.
+ // Asset names returned by Meta are not standardized; some IG usernames omit spaces.
+ // Don't assign a generic "Renault", "Chevrolet" or "GPC Marketing" account:
+ // several dealerships share those terms and must be explicitly confirmed.
  const proposals=[
   {name:'Renault Circular',match:/\bcircular\b/},
-  {name:'Renault Centro',match:/\bcentro rosario\b|\brenault centro\b|\brombo\b/},
-  {name:'VW Pesado Castro',match:/\bvolkswagen\b|\bvw\b|\bf pesado castro\b/},
-  {name:'Chevrolet Pesado Castro',match:/\bchevrolet\b.*\bpesado castro\b|\bpesado castro\b.*\bchevrolet\b/},
-  {name:'Chevromax',match:/\bchevromax\b/},
-  {name:'Sakura Motors',match:/\bsakura\b|\btoyota\b|\bsak\b/},
-  {name:'Usados Pesado Castro',match:/\busados\b.*\bpesado castro\b|\bpesado castro\b.*\busados\b|\bupc\b/},
-  {name:'Autos Directos',match:/\bautos directos\b/}
+  {name:'Renault Centro',match:/\bcentro rosario\b|\brenault\s*centro\b|renaultcentro|\brombo\b/},
+  {name:'VW Pesado Castro',match:/\bvolkswagen\b|\bvw\b|pesadocastrovw|\bf pesado castro\b|\bfrancisco pesado castro\b/},
+  {name:'Chevrolet Pesado Castro',match:/\bchevrolet\b.*\bpesado castro\b|\bpesado castro\b.*\bchevrolet\b|pcchevrolet|\bpesado castro motors\b/},
+  {name:'Chevromax',match:/chevromax/},
+  {name:'Sakura Motors',match:/sakura|toyota|\bsak\b/},
+  {name:'Usados Pesado Castro',match:/usados.*pesado.?castr|pesado.?castr.*usados|\bupc\b/},
+  {name:'Autos Directos',match:/autos.?directos/}
  ];
  const matched=proposals.filter(p=>p.match.test(s));
  if(matched.length!==1)return null;
