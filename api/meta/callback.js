@@ -6,10 +6,9 @@ export default async function handler(req,res){
  if(typeof state!=='string'||!state||typeof code!=='string'||error)return res.redirect(302,errorRedirect(error||'authorization_cancelled'));
  try{
  const db=admin();
- const {data:record,error:findError}=await db.schema('hub_private').from('meta_oauth_states').select('*').eq('state_hash',digest(state)).maybeSingle();
- if(findError||!record||new Date(record.expires_at).getTime()<Date.now())return res.redirect(302,errorRedirect('invalid_or_expired_state'));
- const {error:removeError}=await db.schema('hub_private').from('meta_oauth_states').delete().eq('state_hash',digest(state));
- if(removeError)throw removeError;
+ const {data:record,error:findError}=await db.rpc('hub_oauth_state_consume',{p_hash:digest(state)});
+ if(findError||!record?.length)return res.redirect(302,errorRedirect('invalid_or_expired_state'));
+
  const params=new URLSearchParams({client_id:APP_ID,client_secret:process.env.META_APP_SECRET,redirect_uri:REDIRECT,code});
  const tokenResponse=await fetch(GRAPH+'/oauth/access_token?'+params);
  const tokenData=await tokenResponse.json();
@@ -23,7 +22,7 @@ export default async function handler(req,res){
  if(!meRes.ok||!me.id)throw Error('Unable to retrieve authorized Meta identity');
  const encrypted=encrypt(accessToken);
  const expiresSeconds=longData.expires_in||tokenData.expires_in;
- const {error:saveError}=await db.schema('hub_private').from('meta_connections').upsert({...encrypted,organization_id:record.organization_id,connected_by:record.user_id,meta_user_id:String(me.id),meta_user_name:me.name||'',scopes:[],expires_at:expiresSeconds?new Date(Date.now()+Number(expiresSeconds)*1000).toISOString():null},{onConflict:'organization_id,meta_user_id'});
+ const {error:saveError}=await db.rpc('hub_meta_connection_save',{p_org:record[0].organization_id,p_user:record[0].user_id,p_meta_id:String(me.id),p_meta_name:me.name||'',p_cipher:encrypted.token_ciphertext,p_iv:encrypted.token_iv,p_exp:expiresSeconds?new Date(Date.now()+Number(expiresSeconds)*1000).toISOString():null});
  if(saveError)throw saveError;
  return res.redirect(302,BASE_URL+'/?meta_connected=1');
  }catch(e){return res.redirect(302,errorRedirect(e.message))}
