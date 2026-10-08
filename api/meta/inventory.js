@@ -42,16 +42,23 @@ async function advertising(token){
  return result;
 }
 function suggestBrand(name,brandRows){
- const s=(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
- let choices=[];
- if(/chevromax|chevrolet|pesado castro motors/.test(s))choices.push('Chevromax');
- if(/volkswagen|\bvw\b|f pesado castro/.test(s))choices.push('Pesado Castro VW');
- if(/renault|circular|rombo|centro rosario/.test(s))choices.push('Circular Renault');
- if(/sakura|toyota|\bsak\b/.test(s))choices.push('Sakura Toyota');
- if(/usados|\bupc\b/.test(s))choices.push('Usados GPC');
- choices=[...new Set(choices)];
- if(choices.length!==1)return null;
- return brandRows.find(b=>b.name===choices[0])?.id||null;
+ const s=(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
+ // Never infer dealership solely from the manufacturer name or "Pesado Castro".
+ // Renault Centro and Circular, and Chevromax and Chevrolet Pesado Castro,
+ // operate as different units with independently authorized destinations.
+ const proposals=[
+  {name:'Renault Circular',match:/\bcircular\b/},
+  {name:'Renault Centro',match:/\bcentro rosario\b|\brenault centro\b|\brombo\b/},
+  {name:'VW Pesado Castro',match:/\bvolkswagen\b|\bvw\b|\bf pesado castro\b/},
+  {name:'Chevrolet Pesado Castro',match:/\bchevrolet\b.*\bpesado castro\b|\bpesado castro\b.*\bchevrolet\b/},
+  {name:'Chevromax',match:/\bchevromax\b/},
+  {name:'Sakura Motors',match:/\bsakura\b|\btoyota\b|\bsak\b/},
+  {name:'Usados Pesado Castro',match:/\busados\b.*\bpesado castro\b|\bpesado castro\b.*\busados\b|\bupc\b/},
+  {name:'Autos Directos',match:/\bautos directos\b/}
+ ];
+ const matched=proposals.filter(p=>p.match.test(s));
+ if(matched.length!==1)return null;
+ return brandRows.find(b=>b.name===matched[0].name)?.id||null;
 }
 export default async function handler(req,res){
  res.setHeader('Cache-Control','private,no-store');
