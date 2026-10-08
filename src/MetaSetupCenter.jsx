@@ -82,15 +82,15 @@ export default function MetaSetupCenter({client}){
   </section>
   {scopeMessage&&<div className="gpc-wizard-alert" role="alert"><AlertTriangle size={17}/>{scopeMessage}</div>}
   <section className="gpc-wizard-permissions">
-   <div><span className="gpc-wizard-step">1</span><div><h3>Autorizaciones necesarias</h3><p>El HUB ya tiene acceso a publicidad. Para ver y publicar en páginas o Instagram hay que autorizar esos permisos en Meta, sin compartir contraseñas.</p></div></div>
-   <div className="gpc-wizard-permission-row"><div><strong>Publicidad</strong><small>Campañas y métricas</small></div><span className={connection.ads?'gpc-wizard-ok':'gpc-wizard-pending'}>{connection.ads?'Conectada':'Pendiente'}</span></div>
-   <div className="gpc-wizard-permission-row"><div><strong>Facebook y páginas</strong><small>Descubrir automáticamente páginas administradas</small></div>
-    {connection.facebook?<span className="gpc-wizard-ok">Conectado</span>:<button className="primary" onClick={()=>authorize('social_fb')} disabled={authorizing}>Autorizar páginas <ArrowRight size={14}/></button>}</div>
-   {connection.facebook&&<div className="gpc-wizard-permission-row"><div><strong>Publicación en Facebook</strong><small>Habilitar programación desde el calendario</small></div>
-    {connection.pages_publish?<span className="gpc-wizard-ok">Habilitada</span>:<button className="secondary" disabled={authorizing} onClick={()=>authorize('social_publish')}>Autorizar publicación</button>}</div>}
-   <div className="gpc-wizard-permission-row"><div><strong>Instagram</strong><small>Buscaremos los perfiles profesionales vinculados a las páginas. Meta puede requerir permisos específicos adicionales.</small></div>
-    {connection.instagram?<span className="gpc-wizard-ok">Habilitado</span>:<span className="gpc-wizard-pending">Permiso pendiente</span>}</div>
-   {connection.facebook&&counts.instagram===0&&<p className="gpc-wizard-footnote">Si no aparecen tus Instagram después de sincronizar, Meta todavía no autorizó su lectura o no están vinculados a las páginas disponibles. No significa que se hayan eliminado.</p>}
+   <div><span className="gpc-wizard-step">1</span><div><h3>Conectá todos tus activos con Meta</h3><p>Una única autorización empresarial para seleccionar páginas de Facebook, cuentas de Instagram y cuentas publicitarias. Usamos el ajuste GPC Marketing Hub de Meta Developers.</p></div></div>
+   <div className="gpc-wizard-permission-row">
+     <div><strong>Facebook Login for Business</strong><small>Meta te mostrará qué empresas y activos actuales (y, cuando esté disponible, futuros) querés autorizar. No ingreses tokens ni contraseñas en este HUB.</small></div>
+     <button className="primary" onClick={()=>authorize('business')} disabled={authorizing}>{authorizing?'Abriendo Meta...':'Conectar todo con Meta'} <ArrowRight size={15}/></button>
+   </div>
+   <div className="gpc-wizard-permission-row"><div><strong>Publicidad</strong><small>Campañas, métricas y anuncios</small></div><span className={connection.ads?'gpc-wizard-ok':'gpc-wizard-pending'}>{connection.ads?'Ya conectada':'Pendiente'}</span></div>
+   <div className="gpc-wizard-permission-row"><div><strong>Páginas de Facebook</strong><small>{counts.pages||0} páginas detectadas. Para publicar, Meta debe conceder la tarea CREATE_CONTENT y pages_manage_posts.</small></div><span className={connection.facebook?'gpc-wizard-ok':'gpc-wizard-pending'}>{connection.facebook?'Permiso concedido':'Por autorizar'}</span></div>
+   <div className="gpc-wizard-permission-row"><div><strong>Instagram</strong><small>{counts.instagram||0} perfiles detectados. La publicación requiere los permisos de Instagram aprobados por Meta.</small></div><span className={connection.instagram?'gpc-wizard-ok':'gpc-wizard-pending'}>{connection.instagram?'Permiso concedido':'Por verificar'}</span></div>
+   <p className="gpc-wizard-footnote">La autorización previa de anuncios se conserva. Si Meta no ofrece todos los activos, consultá Detalles de sincronización al final: puede faltar aprobación o acceso a alguna página. Los contenidos no se publican por conectar las cuentas.</p>
   </section>
   <section className="gpc-wizard-accounts">
    <div className="gpc-wizard-section-top"><span className="gpc-wizard-step">2</span><div><h3>Ordenar cuentas por concesionario</h3><p>El HUB propuso {confident.length} coincidencias y encontró {missing.length} activos sin asignar. Ningún destino se publica sin tu confirmación.</p></div></div>
