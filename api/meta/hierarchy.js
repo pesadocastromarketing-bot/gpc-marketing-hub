@@ -35,29 +35,81 @@ async function pageAll(token,path,fields){
 function summarizeCreative(creative){
   if(!creative)return null;
   const story=creative.object_story_spec||{};
-  const link=story.link_data||{};
+  const link=story.link_data||story.template_data||{};
   const photo=story.photo_data||{};
   const video=story.video_data||{};
   const assets=creative.asset_feed_spec||{};
-  const cards=Array.isArray(link.child_attachments)?link.child_attachments:[];
+  const links=Array.isArray(link.child_attachments)?link.child_attachments:[];
   const assetImages=Array.isArray(assets.images)?assets.images:[];
   const assetVideos=Array.isArray(assets.videos)?assets.videos:[];
-  const pictures=[creative.image_url,creative.thumbnail_url,link.picture,photo.url,video.image_url,...cards.map(x=>x.picture),...assetImages.map(x=>x.url)].map(safeImage).filter(Boolean);
-  const images=[...new Set(pictures)].slice(0,12);
-  const isVideo=Boolean(video.video_id||assetVideos.length);
-  const isCarousel=cards.length>1||assetImages.length>1;
+  const cards=links.length?links.slice(0,15).map((card,i)=>({
+    index:i+1,name:card.name||card.title||'',description:card.description||'',
+    picture:safeImage(card.picture)||safeImage(card.image_url)||null,
+    image_hash:card.image_hash||null,video_id:card.video_id||null,video_url:null,
+    link:safeImage(card.link)
+  })):assetImages.length>1?assetImages.slice(0,15).map((image,i)=>({
+    index:i+1,name:image.name||'',description:'',picture:safeImage(image.url),
+    image_hash:image.hash||null,video_id:null,video_url:null,link:null
+  })):[];
+  const pictures=[creative.image_url,creative.thumbnail_url,link.picture,photo.url,video.image_url,...cards.map(x=>x.picture)]
+    .map(safeImage).filter(Boolean);
+  const images=[...new Set(pictures)].slice(0,15);
+  const videoId=video.video_id||creative.video_id||assetVideos[0]?.video_id||null;
+  const isCarousel=links.length>1;
+  const isVideo=Boolean(videoId||assetVideos.length);
   const body=creative.body||link.message||photo.caption||video.message||assets.bodies?.[0]?.text||'';
   const title=creative.title||link.name||video.title||assets.titles?.[0]?.text||'';
   return {
     id:creative.id||null,name:creative.name||'Creatividad',title,body,
-    format:isCarousel?'Carrusel':isVideo?'Video':'Imagen',
-    images,video_id:video.video_id||assetVideos[0]?.video_id||null,
+    format:isCarousel?'Carrusel':isVideo?'Video':assetImages.length>1?'Variantes de imagen':'Imagen',
+    images,video_id:videoId,video_url:null,video_error:null,
     description:link.description||video.description||'',
-    destination:link.link||video.call_to_action?.value?.link||null,
+    destination:safeImage(link.link)||safeImage(video.call_to_action?.value?.link),
     cta:creative.call_to_action_type||link.call_to_action?.type||video.call_to_action?.type||null,
-    cards:cards.slice(0,12).map(x=>({name:x.name||'',description:x.description||'',picture:safeImage(x.picture),link:x.link||null}))
+    cards,
+    story_id:creative.effective_object_story_id||creative.object_story_id||null
   };
 }
+async function enrichCreative(token,accountId,creative){
+  const result=summarizeCreative(creative);
+  if(!result)return null;
+  // The standard creative thumbnail is frequently the only image in a video ad.
+  // For multi-card ads, attempt image_hash resolution through the authorized ad account.
+  const hashes=[...new Set(result.cards.map(c=>c.image_hash).filter(Boolean))].slice(0,15);
+  if(hashes.length){
+    try{
+      const response=await graph(token,'act_'+accountId+'/adimages',{
+        hashes:JSON.stringify(hashes),fields:'hash,url,url_128',limit:20
+      });
+      const lookup=new Map((response.data||[]).map(a=>[a.hash,safeImage(a.url)||safeImage(a.url_128)]));
+      result.cards=result.cards.map(c=>({...c,picture:c.picture||lookup.get(c.image_hash)||null}));
+    }catch(_){}
+  }
+  const ids=[...new Set([result.video_id,...result.cards.map(c=>c.video_id)].filter(Boolean))].slice(0,4);
+  const media=await Promise.all(ids.map(async id=>{
+    for(const fields of ['source,picture','source']){
+      try{
+        const response=await graph(token,String(id),{fields});
+        return {id:String(id),url:safeImage(response.source),poster:safeImage(response.picture)};
+      }catch(_){}
+    }
+    return {id:String(id),url:null,poster:null};
+  }));
+  const byId=new Map(media.map(x=>[x.id,x]));
+  if(result.video_id){
+    const record=byId.get(String(result.video_id));
+    result.video_url=record?.url||null;
+    result.video_error=!result.video_url?'Meta no habilitó la reproducción de este video para la autorización actual. Se muestra su miniatura.':null;
+    if(record?.poster)result.images=[...new Set([record.poster,...result.images])];
+  }
+  result.cards=result.cards.map(card=>{
+    const video=byId.get(String(card.video_id||''));
+    return {...card,video_url:video?.url||null,picture:card.picture||video?.poster||null};
+  });
+  result.images=[...new Set([...result.cards.map(c=>c.picture).filter(Boolean),...result.images])].slice(0,18);
+  return result;
+}
+
 export default async function handler(req,res){
   res.setHeader('Cache-Control','private, no-store');
   if(req.method!=='GET')return res.status(405).json({error:'Método no permitido'});
@@ -111,11 +163,11 @@ export default async function handler(req,res){
     if(!ad.creative?.id)return res.status(200).json({creative:null,message:'Este anuncio no tiene una creatividad accesible'});
     let detail,partial=false;
     try{
-      detail=await graph(token,ad.creative.id,{fields:'id,name,thumbnail_url,image_url,title,body,call_to_action_type,object_story_spec,asset_feed_spec'});
+      detail=await graph(token,ad.creative.id,{fields:'id,name,thumbnail_url,image_url,title,body,call_to_action_type,object_story_spec,asset_feed_spec,effective_object_story_id,object_story_id'});
     }catch(_){
       partial=true;
       detail=await graph(token,ad.creative.id,{fields:'id,name,thumbnail_url,image_url,title,body'});
     }
-    return res.status(200).json({creative:summarizeCreative(detail),partial});
+    return res.status(200).json({creative:await enrichCreative(token,accountId,detail),partial});
   }catch(e){return res.status(502).json({error:'No se pudo consultar Meta: '+String(e.message||'Error').slice(0,180)})}
 }
