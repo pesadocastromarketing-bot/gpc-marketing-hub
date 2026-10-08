@@ -34,14 +34,16 @@ export default async function handler(req,res){
  const {data:member}=await db.from('hub_members').select('organization_id,role').eq('user_id',user.id).in('role',['owner','admin']).limit(1).maybeSingle();
  if(!member)return res.status(403).json({error:'Solo administradores pueden modificar campañas.'});
  const {data:connections,error:dbError}=await db.rpc('hub_meta_encrypted_connections');if(dbError)throw dbError;
+ const {data:businessConnections,error:businessError}=await db.rpc('hub_social_tokens');if(businessError)throw businessError;
  let token=null;
- for(const connection of (connections||[]).filter(c=>c.organization_id===member.organization_id)){
+ for(const connection of ([...(businessConnections||[]),...(connections||[])]).filter(c=>c.organization_id===member.organization_id)){
   if(connection.expires_at&&new Date(connection.expires_at).getTime()<Date.now())continue;
   try{
    const candidate=decrypt(connection.token_ciphertext,connection.token_iv);
    const [account,permissions]=await Promise.all([graph(candidate,'act_'+account_id,'account_id,currency'),graph(candidate,'me/permissions','permission,status')]);
-   const granted=(permissions.body.data||[]).some(x=>x.permission==='ads_management'&&x.status==='granted');
-   if(account.ok&&String(account.body.account_id)===String(account_id)&&permissions.ok&&granted){token=candidate;break}
+   const granted=(permissions.ok&&(permissions.body.data||[]).some(x=>x.permission==='ads_management'&&x.status==='granted'))||
+     (connection.scopes||[]).includes('ads_management');
+   if(account.ok&&String(account.body.account_id)===String(account_id)&&granted){token=candidate;break}
   }catch(_){}
  }
  if(!token)return res.status(403).json({error:'Falta ads_management. Entrá a Configuración y autorizá la edición de anuncios en Meta.'});
