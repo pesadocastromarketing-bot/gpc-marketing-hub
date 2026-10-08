@@ -53,3 +53,44 @@
 .mh-disclaimer{margin:22px 0 0;color:#8997aa;font-size:11px}
 @media(max-width:850px){.mh-creative{grid-template-columns:1fr}.mh-section-title{flex-wrap:wrap}}
 @media(max-width:620px){.mh-content{padding:14px}.mh-item{flex-wrap:wrap}.mh-item button.secondary{margin-left:auto}.mh-readonly{display:none}.mh-breadcrumbs{padding:14px}.mh-meta{gap:6px}.mh-thumb{width:54px;height:54px}}
+
+/* Selector compacto de cuentas de Meta */
+.gpc-account-picker{position:relative;flex:1;min-width:230px;max-width:460px;z-index:4}
+.gpc-account-trigger{width:100%;min-height:42px;border:1px solid #d8e0ec;background:#fff;border-radius:9px;padding:9px 13px;display:flex;justify-content:space-between;align-items:center;gap:12px;color:#293854;text-align:left}
+.gpc-account-trigger>span{min-width:0}
+.gpc-account-trigger strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.gpc-account-trigger small{display:block;color:#7b8ca7;font-size:11px;margin-top:3px}
+.gpc-account-popover{position:absolute;top:calc(100% + 7px);left:0;width:min(500px,calc(100vw - 32px));max-width:none;border:1px solid #d8e1ee;background:#fff;box-shadow:0 18px 40px #172c4b2a;border-radius:13px;padding:12px;z-index:50}
+.gpc-account-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:14px}
+.gpc-account-heading button{background:transparent;border:0;color:#6f809c}
+.gpc-account-search{display:flex;align-items:center;gap:8px;border:1px solid #d5ddec;border-radius:8px;padding:0 11px;color:#7a8da5}
+.gpc-account-search input{border:0;outline:none;min-width:0;width:100%;padding:11px 0;font-size:13px}
+.gpc-account-summary{padding:9px 2px;color:#8290a5;font-size:11px}
+.gpc-account-list{max-height:330px;overflow-y:auto;display:grid;gap:4px}
+.gpc-account-option{display:block;background:white;border:1px solid transparent;border-radius:8px;text-align:left;padding:10px;width:100%}
+.gpc-account-option:hover,.gpc-account-option.selected{background:#f2f6ff;border-color:#d9e4ff}
+.gpc-account-option-name{display:block;font-size:13px;font-weight:700;color:#28364e;overflow-wrap:anywhere}
+.gpc-account-option-details{display:block;font-size:11px;margin-top:5px;color:#7888a0;overflow-wrap:anywhere}
+.gpc-account-secondary-toggle{margin-top:10px;padding:8px;width:100%;background:#eef2fa;border:0;border-radius:7px;color:#3c5b97;font-size:12px;font-weight:700}
+.gpc-account-footnote,.gpc-account-empty{font-size:11px;color:#91a0b6;margin:10px 3px 2px;line-height:1.4}
+
+/* Vistas previas de carruseles y videos */
+.mh-carousel-frame{display:grid;place-items:center;min-height:220px;background:#f6f8fc;border:1px solid #e6eaf2;border-radius:9px;overflow:hidden}
+.mh-carousel-frame .mh-preview-photo{display:block;width:100%;height:auto;max-height:420px;object-fit:contain}
+.mh-preview-video{display:block;width:100%;max-height:560px;border-radius:8px;object-fit:contain;background:#111827;aspect-ratio:9/16}
+.mh-carousel-frame .mh-preview-video{max-width:360px}
+.mh-no-video{position:relative;display:grid;place-items:center;background:#eef2f8;min-height:240px}
+.mh-no-video .mh-preview-photo{width:100%;max-height:420px;object-fit:contain}
+.mh-play-unavailable{display:flex;align-items:center;gap:6px;position:absolute;bottom:10px;left:10px;right:10px;padding:9px;border-radius:8px;background:#1d2a42d9;color:#fff;font-size:11px}
+.mh-carousel-controls{display:flex;align-items:center;justify-content:center;gap:20px;margin:12px 0;font-size:13px}
+.mh-carousel-controls button{display:grid;place-items:center;background:#f0f4fc;border:1px solid #dce5f2;border-radius:50%;width:35px;height:35px;color:#405988}
+.mh-carousel-caption{display:grid;gap:6px;color:#3b4e6c;font-size:12px}
+.mh-carousel-caption p{margin:0;color:#70839d;font-size:12px}
+.mh-carousel-caption a{display:flex;align-items:center;gap:5px}
+.mh-carousel-strip{display:flex;gap:8px;margin-top:13px;overflow-x:auto;padding:4px 0}
+.mh-carousel-strip button{width:66px;height:66px;flex:0 0 66px;padding:3px;border:2px solid transparent;border-radius:8px;background:#edf1f7;overflow:hidden}
+.mh-carousel-strip button.selected{border-color:#5274d8}
+.mh-carousel-strip img{width:100%;height:100%;object-fit:cover}
+.mh-carousel-strip .mh-placeholder{min-height:0;font-size:0}
+.mh-carousel-strip .mh-placeholder svg{width:18px}
+@media(max-width:700px){.gpc-account-picker{min-width:100%;max-width:none}.gpc-account-popover{position:fixed;top:12vh;left:4vw;width:92vw;max-height:78vh;overflow-y:auto;z-index:90}.gpc-account-list{max-height:49vh}}
