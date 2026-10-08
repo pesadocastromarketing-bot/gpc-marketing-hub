@@ -1,6 +1,7 @@
 import React,{useEffect,useState} from 'react';
 import {ArrowLeft,ChevronRight,Image as ImageIcon,Film,Layers,RefreshCw,ExternalLink} from 'lucide-react';
 import './style.css';
+import CreativePreview from './CreativePreview.jsx';
 
 const labelStatus=(v)=>({
   ACTIVE:'Activa',PAUSED:'Pausada',CAMPAIGN_PAUSED:'Pausada por campaña',
@@ -118,10 +119,7 @@ export default function MetaHierarchy({client,accountId,campaign,onBack}){
       <div className="mh-section-title"><div><h3>Creatividad del anuncio</h3><p>{ad.name}</p></div>{statusPill(ad)}</div>
       {!loading&&!error&&!creative&&<p className="mh-empty">No hay una creatividad disponible para este anuncio.</p>}
       {creative&&<div className="mh-creative">
-        <div className="mh-media"><div className="mh-media-title">{creative.format==='Video'?<Film size={18}/>:<ImageIcon size={18}/>} {creative.format} · {creative.name}</div>
-          {creative.images?.length?<div className="mh-gallery">{creative.images.map((src,i)=><a href={src} target="_blank" rel="noopener noreferrer" key={src+i} title="Abrir imagen original"><img src={src} alt={'Imagen '+(i+1)+' de la creatividad'} loading="lazy"/></a>)}</div>:<div className="mh-placeholder"><ImageIcon size={28}/><span>Meta no proporcionó imágenes accesibles para esta creatividad.</span></div>}
-          {creative.format==='Video'&&<p className="mh-note">Video identificado. Se muestran sus miniaturas cuando Meta las proporciona; la reproducción completa todavía no está integrada.</p>}
-        </div>
+        <CreativePreview creative={creative}/>
         <div className="mh-details">
           <div className="mh-detail"><span>Título</span><strong>{creative.title||'No informado'}</strong></div>
           <div className="mh-detail"><span>Texto del anuncio</span><p>{creative.body||'Meta no proporcionó texto para esta creatividad.'}</p></div>
