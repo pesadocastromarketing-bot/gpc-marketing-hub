@@ -17,12 +17,12 @@ export default async function handler(req,res){
  if(conn.expires_at&&new Date(conn.expires_at).getTime()<Date.now()){warnings.push('La autorización de Meta expiró');continue}
  try{
  const token=decrypt(conn.token_ciphertext,conn.token_iv);
- let next=GRAPH+'/me/adaccounts?fields=id,name,account_id,account_status,currency,business{id,name}&limit=100&access_token='+encodeURIComponent(token);
+ let next=GRAPH+'/me/adaccounts?fields=id,name,account_id,account_status,currency&limit=100&access_token='+encodeURIComponent(token);
  let count=0;
  while(next&&count++<5){
  const response=await fetch(next);const json=await response.json();
  if(!response.ok){warnings.push(json.error?.message||'Meta no permitió leer las cuentas');break}
- for(const a of json.data||[])accounts.push({id:a.id,name:a.name,account_id:a.account_id,account_status:a.account_status,currency:a.currency,business:a.business?.name||null});
+ for(const a of json.data||[])accounts.push({id:a.id,name:a.name,account_id:a.account_id,account_status:a.account_status,currency:a.currency,business:null});
  next=json.paging?.next||null;
  }
  }catch(e){warnings.push('No se pudo consultar una conexión de Meta')}
