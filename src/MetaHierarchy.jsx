@@ -126,8 +126,8 @@ export default function MetaHierarchy({client,accountId,campaign,onBack}){
           {creative.description&&<div className="mh-detail"><span>Descripción</span><p>{creative.description}</p></div>}
           {creative.cta&&<div className="mh-detail"><span>Llamado a la acción</span><strong>{creative.cta}</strong></div>}
           {secureLink(creative.destination)&&<div className="mh-detail"><span>URL de destino</span><a href={secureLink(creative.destination)} target="_blank" rel="noopener noreferrer">Abrir destino <ExternalLink size={13}/></a></div>}
-          <div className="mh-detail"><span>ID de la creatividad</span><code>{creative.id||'No informado'}</code></div>
-          {creative.cards?.length>0&&<div className="mh-detail"><span>Tarjetas del carrusel ({creative.cards.length})</span><div className="mh-cards">{creative.cards.map((card,i)=><div key={i}>{card.picture&&<img src={card.picture} alt={'Tarjeta '+(i+1)}/>}<strong>{card.name||'Tarjeta '+(i+1)}</strong><small>{card.description}</small></div>)}</div></div>}
+          <div className="mh-detail"><span>ID de la creatividad</span><code>{creative.id||'No informado'}</code></div><div className="mh-detail"><a href={'https://adsmanager.facebook.com/adsmanager/manage/ads?act='+encodeURIComponent(accountId)+'&selected_ad_ids='+encodeURIComponent(ad.id)} target="_blank" rel="noopener noreferrer">Abrir este anuncio en Meta Ads Manager <ExternalLink size={13}/></a></div>
+          {creative.cards?.length>0&&<div className="mh-detail"><span>{creative.format==='Carrusel'?'Tarjetas del carrusel':'Activos de la creatividad'} ({creative.cards.length})</span><div className="mh-cards">{creative.cards.map((card,i)=><div key={i}>{card.picture&&<img src={card.picture} alt={'Tarjeta '+(i+1)}/>}<strong>{card.name||'Tarjeta '+(i+1)}</strong><small>{card.description}</small></div>)}</div></div>}
         </div>
       </div>}
       <p className="mh-disclaimer">Vista de activos y textos recuperados de Meta. Algunas variantes automáticas, ubicaciones o vistas previas exactas pueden diferir.</p>
