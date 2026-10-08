@@ -162,11 +162,15 @@ export default async function handler(req,res){
       return res.status(403).json({error:'Anuncio fuera del conjunto seleccionado'});
     if(!ad.creative?.id)return res.status(200).json({creative:null,message:'Este anuncio no tiene una creatividad accesible'});
     let detail,partial=false;
-    try{
-      detail=await graph(token,ad.creative.id,{fields:'id,name,thumbnail_url,image_url,title,body,call_to_action_type,object_story_spec,asset_feed_spec,effective_object_story_id,object_story_id'});
-    }catch(_){
-      partial=true;
-      detail=await graph(token,ad.creative.id,{fields:'id,name,thumbnail_url,image_url,title,body'});
+    const options=[
+      'id,name,thumbnail_url,image_url,title,body,call_to_action_type,object_story_spec,asset_feed_spec,effective_object_story_id,object_story_id',
+      'id,name,thumbnail_url,image_url,title,body,call_to_action_type,object_story_spec,asset_feed_spec',
+      'id,name,thumbnail_url,image_url,title,body,object_story_spec',
+      'id,name,thumbnail_url,image_url,title,body'
+    ];
+    for(let i=0;i<options.length;i++){
+      try{detail=await graph(token,ad.creative.id,{fields:options[i]});partial=i>0;break}
+      catch(error){if(i===options.length-1)throw error}
     }
     return res.status(200).json({creative:await enrichCreative(token,accountId,detail),partial});
   }catch(e){return res.status(502).json({error:'No se pudo consultar Meta: '+String(e.message||'Error').slice(0,180)})}
