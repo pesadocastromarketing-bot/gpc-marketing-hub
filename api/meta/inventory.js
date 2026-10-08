@@ -120,6 +120,18 @@ export default async function handler(req,res){
     canPublishIg ||= scopes.includes('instagram_content_publish')&&scopes.includes('instagram_basic');
     try {
       const token=decrypt(conn.token_ciphertext,conn.token_iv);
+      // Business Login also grants ad accounts; merge by immutable Meta account ID.
+      // Keep the original advertising OAuth token and all previous brand mappings.
+      if(scopes.includes('ads_read')||scopes.includes('ads_management')){
+        try{
+          for(const a of await advertising(token)){
+            if(!a.account_id)continue;
+            await upsert({organization_id:org,kind:'ad_account',external_id:String(a.account_id),
+              display_name:a.name||'Cuenta publicitaria',
+              metadata:{currency:a.currency||null,account_status:a.account_status||null}});
+          }
+        }catch(e){warnings.push('Cuentas empresariales: '+String(e.message).slice(0,110))}
+      }
       for(const p of await pages(token)){
         if(!p.id)continue;
         const tasks=Array.isArray(p.tasks)?p.tasks:[];
