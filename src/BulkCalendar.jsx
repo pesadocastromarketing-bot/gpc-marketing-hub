@@ -100,7 +100,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    setMessage('Los formatos Imagen e Historia requieren imágenes; elegí Reel para video.');return
   }
   if(dates.some(d=>d<today)){setMessage('No se pueden planificar publicaciones en fechas pasadas.');return}
-  if(!window.confirm('¿Crear '+estimated+' publicaciones en '+dates.length+' fecha(s), '+selectedBrands.length+' marca(s) y '+selectedChannels.length+' red(es)?\n\nTodavía no se publicarán automáticamente.'))return;
+  if(!window.confirm('¿Crear '+estimated+' publicaciones en '+dates.length+' fecha(s), '+selectedBrands.length+' marca(s) y '+selectedChannels.length+' red(es)?\n\n'+(planMode==='pending_authorization'?'El HUB intentará programar AUTOMÁTICAMENTE las cuentas autorizadas. Las que no tengan permisos quedarán pendientes.':'Quedarán como borradores y NO se publicarán.')))return;
   setSaving(true);setMessage('');
   const batchId=id();
   const rows=dates.flatMap(date=>selectedBrands.flatMap(code=>selectedChannels.map(channel=>({
@@ -108,10 +108,27 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
     scheduled_date:date,scheduled_time:time,channels:[channel],media_paths:selectedMedia,
     created_by:user.id,status:'draft',publication_mode:planMode,timezone:'America/Argentina/Buenos_Aires',batch_id:batchId
   }))));
-  const {error}=await client.from('hub_content').insert(rows);
-  if(error)setMessage('No se pudo guardar el lote: '+error.message);
-  else {setMessage('Se crearon '+rows.length+' publicaciones en Supabase. La salida a Meta sigue pendiente de autorización.');setShowComposer(false);setDates([dateOffset(today,1)]);setSelectedMedia([]);setTitle('');setCopy('');await refresh();}
-  setSaving(false);
+  try{
+   const {data:created,error}=await client.from('hub_content').insert(rows).select('id');
+   if(error)throw Error(error.message);
+   let summary='Se crearon '+rows.length+' publicaciones en Supabase.';
+   if(planMode==='pending_authorization'&&created?.length){
+    const {data:{session}}=await client.auth.getSession();
+    const groups=[];for(let i=0;i<created.length;i+=100)groups.push(created.slice(i,i+100).map(x=>x.id));
+    let success=0,failed=0,details=[];
+    for(const ids of groups){
+     const response=await fetch('/api/social/schedule',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session?.access_token},body:JSON.stringify({ids,confirmation:'PROGRAMAR'})});
+     const result=await response.json();
+     if(!response.ok){failed+=ids.length;details.push(result.error||'Meta no autorizó la programación');continue}
+     success+=result.scheduled||0;failed+=(result.total||ids.length)-(result.scheduled||0);
+     details.push(...(result.results||[]).filter(x=>x.status==='error').slice(0,3).map(x=>x.message));
+    }
+    summary+=' Programadas automáticamente: '+success+'. Pendientes: '+failed+'.'+(details.length?' '+[...new Set(details)].slice(0,3).join(' | '):'');
+   }
+   setMessage(summary);setShowComposer(false);setDates([dateOffset(today,1)]);setSelectedMedia([]);setTitle('');setCopy('');
+   await refresh();
+  }catch(e){setMessage('No se pudo guardar el lote: '+e.message)}
+  finally{setSaving(false)}
  }
  async function scheduleSelected(){
   if(!selectedRows.length)return;
@@ -165,9 +182,9 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    <div className="hub-shortcuts"><button onClick={()=>addDate(today)}>Hoy</button><button onClick={()=>addDate(dateOffset(today,1))}>Mañana</button><button onClick={()=>addDate(dateOffset(today,7))}>+7 días</button><button onClick={()=>addDate(dateOffset(today,14))}>+14 días</button><button onClick={()=>repeat(7)}>4 semanas seguidas</button><button onClick={()=>repeat(30)}>4 meses seguidos</button></div>
    <div className="hub-date-pills">{dates.map(d=><button key={d} onClick={()=>removeDate(d)}>{moneyDate(d)} <span>×</span></button>)}</div>
    <div className="hub-composer-heading"><h3>4. Guardá todas las publicaciones</h3></div>
-   <div className="hub-check-list"><label><input type="radio" checked={planMode==='draft'} onChange={()=>setPlanMode('draft')}/>Borradores</label><label><input type="radio" checked={planMode==='pending_authorization'} onChange={()=>setPlanMode('pending_authorization')}/>Listas para autorizar y programar</label></div>
-   <div className="hub-submit"><div><strong>{estimated} publicaciones</strong><small>{dates.length} fechas × {selectedBrands.length} marcas × {selectedChannels.length} redes</small></div><button className="primary" disabled={saving||uploading||estimated===0} onClick={saveBatch}>{saving?'Guardando...':'Crear '+estimated+' publicaciones'}</button></div>
-   <p className="hub-calendar-warning">Estas publicaciones se guardan con su fecha y creatividad en Supabase. No saldrán automáticamente a Meta hasta habilitar el acceso de publicación a las páginas y cuentas de Instagram.</p>
+   <div className="hub-check-list"><label><input type="radio" checked={planMode==='draft'} onChange={()=>setPlanMode('draft')}/>Borradores</label><label><input type="radio" checked={planMode==='pending_authorization'} onChange={()=>setPlanMode('pending_authorization')}/>Crear y programar automáticamente donde Meta lo permita</label></div>
+   <div className="hub-submit"><div><strong>{estimated} publicaciones</strong><small>{dates.length} fechas × {selectedBrands.length} marcas × {selectedChannels.length} redes</small></div><button className="primary" disabled={saving||uploading||estimated===0} onClick={saveBatch}>{saving?'Guardando...':(planMode==='pending_authorization'?'Crear y programar ':'Crear ')+estimated+' publicaciones'}</button></div>
+   <p className="hub-calendar-warning">Elegí «Borradores» para solamente guardar. «Crear y programar» intentará enviarlas a la cola de Meta al guardar; las cuentas sin autorización no se publicarán y quedarán pendientes. Se requiere autorización de Facebook/Instagram por marca.</p>
   </section>}
   <section className="hub-calendar-view">
    <div className="hub-calendar-month"><button aria-label="Mes anterior" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}><ChevronLeft size={18}/></button><strong>{month.toLocaleDateString('es-AR',{month:'long',year:'numeric'})}</strong><button aria-label="Mes siguiente" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}><ChevronRight size={18}/></button><span>{inMonth.length} publicaciones</span><button className="secondary" onClick={refresh} disabled={loading}><RefreshCw size={14}/> Actualizar</button></div>
