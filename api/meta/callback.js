@@ -6,7 +6,7 @@ export default async function handler(req,res){
  if(typeof state!=='string'||!state||typeof code!=='string'||error)return res.redirect(302,errorRedirect(error||'authorization_cancelled'));
  try{
  const db=admin();
- const {data:record,error:findError}=await db.rpc('hub_oauth_state_consume',{p_hash:digest(state)});
+ const {data:record,error:findError}=await db.rpc('hub_oauth_state_consume_flow',{p_hash:digest(state)});
  if(findError||!record?.length)return res.redirect(302,errorRedirect('invalid_or_expired_state'));
 
  const params=new URLSearchParams({client_id:APP_ID,client_secret:process.env.META_APP_SECRET,redirect_uri:REDIRECT,code});
@@ -22,8 +22,22 @@ export default async function handler(req,res){
  if(!meRes.ok||!me.id)throw Error('Unable to retrieve authorized Meta identity');
  const encrypted=encrypt(accessToken);
  const expiresSeconds=longData.expires_in||tokenData.expires_in;
- const {error:saveError}=await db.rpc('hub_meta_connection_save',{p_org:record[0].organization_id,p_user:record[0].user_id,p_meta_id:String(me.id),p_meta_name:me.name||'',p_cipher:encrypted.token_ciphertext,p_iv:encrypted.token_iv,p_exp:expiresSeconds?new Date(Date.now()+Number(expiresSeconds)*1000).toISOString():null});
+ const exp=expiresSeconds?new Date(Date.now()+Number(expiresSeconds)*1000).toISOString():null;
+ const isSocial=String(record[0].flow||'ads').startsWith('social_');
+ let saveError;
+ if(isSocial){
+   const grantedRes=await fetch(GRAPH+'/me/permissions',{headers:{Authorization:'Bearer '+accessToken}});
+   const grantedJson=await grantedRes.json();
+   const scopes=(grantedJson.data||[]).filter(x=>x.status==='granted').map(x=>x.permission);
+   const save=await db.rpc('hub_store_meta_social',{
+     p_org:record[0].organization_id,p_user:record[0].user_id,p_meta_id:String(me.id),p_meta_name:me.name||'',p_cipher:encrypted.token_ciphertext,p_iv:encrypted.token_iv,p_exp:exp,p_scopes:scopes
+   });
+   saveError=save.error;
+ }else{
+   const save=await db.rpc('hub_meta_connection_save',{p_org:record[0].organization_id,p_user:record[0].user_id,p_meta_id:String(me.id),p_meta_name:me.name||'',p_cipher:encrypted.token_ciphertext,p_iv:encrypted.token_iv,p_exp:exp});
+   saveError=save.error;
+ }
  if(saveError)throw saveError;
- return res.redirect(302,BASE_URL+'/?meta_connected=1');
+ return res.redirect(302,BASE_URL+'/?meta_connected=1&meta_flow='+encodeURIComponent(record[0].flow||'ads'));
  }catch(e){return res.redirect(302,errorRedirect(e.message))}
 }
