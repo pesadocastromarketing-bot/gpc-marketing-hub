@@ -21,8 +21,10 @@ export default async function handler(req,res){
   url.searchParams.set('client_id',APP_ID);
   url.searchParams.set('redirect_uri',REDIRECT);
   url.searchParams.set('response_type','code');
-  url.searchParams.set('scope',SCOPES);
+  const scopeMode=req.body?.mode==='ads_manage'?'ads_read,ads_management':SCOPES;
+  url.searchParams.set('scope',scopeMode);
   url.searchParams.set('state',state);
+  if(req.body?.mode==='ads_manage')url.searchParams.set('auth_type','rerequest');
   return res.status(200).json({url:url.toString()});
  }catch(e){return res.status(500).json({error:'Meta connection unavailable',detail:e.message})}
 }
