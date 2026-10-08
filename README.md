@@ -26,3 +26,7 @@ Abrir la URL indicada por Vite (habitualmente http://localhost:5173). Los borrad
 3. Lectura de Marketing Insights con paginación, limitación de tasa, refresco y fechas.
 4. Biblioteca de archivos multimedia y cola de publicación idempotente por canal, con historial, reintentos y revisión/confirmación.
 5. Replicación real entre cuentas con mapeo explícito de activos, capacidades y permisos.
+
+## Supabase conectado (v0.2)
+
+Inicio de sesión por email y contraseña de Supabase Auth. Cada usuario existente dispone de un workspace privado y cinco marcas iniciales; los borradores de calendario se almacenan en `hub_content` mediante políticas RLS. Variables públicas en Vercel: `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY`. No usar claves secretas en el frontend. Publicación en Meta y datos de Ads siguen deshabilitados.
