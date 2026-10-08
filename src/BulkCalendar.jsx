@@ -6,7 +6,7 @@ const two=x=>String(x).padStart(2,'0');
 const dateKey=d=>[d.getFullYear(),two(d.getMonth()+1),two(d.getDate())].join('-');
 const dateOffset=(value,n)=>{const d=new Date(value+'T12:00:00');d.setDate(d.getDate()+n);return dateKey(d)};
 const today=dateKey(new Date());
-const id=()=>globalThis.crypto?.randomUUID?.()||('m'+Date.now()+Math.random().toString(36).slice(2));
+const id=()=>crypto.randomUUID();
 const calendarCells=month=>{const start=(new Date(month.getFullYear(),month.getMonth(),1).getDay()+6)%7;return Array.from({length:42},(_,i)=>new Date(month.getFullYear(),month.getMonth(),1+i-start))};
 const channels=['Instagram','Facebook'];
 const isVideoMime=m=>m?.startsWith('video/');
