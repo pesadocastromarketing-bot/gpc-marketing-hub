@@ -115,6 +115,18 @@ export default async function handler(req,res){
   if(!membership)return res.status(403).json({error:'No tenés acceso al calendario'});
   if(!['owner','admin','editor'].includes(membership.role))return res.status(403).json({error:'Pedile a un editor que sincronice Meta'});
   const org=membership.organization_id;
+  // Previous months rarely change; serve a month snapshot without 17+ Meta requests.
+  // A manual Sync button always bypasses this cache.
+  const ttlMs=month===thisMonth?5*60*1000:month>thisMonth?10*60*1000:24*60*60*1000;
+  if(req.body?.force!==true){
+   const {data:snapshot,error:cacheError}=await db.from('hub_history_refreshes')
+    .select('refreshed_at,assets_checked,warnings').eq('organization_id',org).eq('month_key',month).maybeSingle();
+   if(cacheError)throw cacheError;
+   if(snapshot&&Date.now()-Date.parse(snapshot.refreshed_at)<(snapshot.warnings?.length?2*60*1000:ttlMs)){
+    return res.status(200).json({month,cached:true,imported:0,assets_checked:snapshot.assets_checked,
+     warnings:snapshot.warnings||[],message:'Historial recuperado desde caché'});
+   }
+  }
   const [{data:assets,error:assetsError},{data:tokens,error:tokensError}]=await Promise.all([
    db.from('hub_meta_assets').select('id,organization_id,brand_id,kind,external_id,display_name,metadata').eq('organization_id',org).not('brand_id','is',null).in('kind',['page','instagram_account']),
    db.rpc('hub_social_tokens')
@@ -146,18 +158,25 @@ export default async function handler(req,res){
     ['posts','id,message,created_time,permalink_url,full_picture',{}],
     ['scheduled_posts','id,message,scheduled_publish_time,full_picture',{}]
    ];
-   for(const [edge,fields,extra] of jobs){
-    const found=await retrieve(pageToken,asset,month,edge,fields,extra);
+   const results=await Promise.all(jobs.map(async ([edge,fields,extra])=>({edge,found:await retrieve(pageToken,asset,month,edge,fields,extra)})));
+   for(const {edge,found} of results){
     if(found.warning)warnings.push(asset.display_name+' ('+edge+'): '+found.warning);
     if(found.truncated)warnings.push(asset.display_name+' ('+edge+'): hay más resultados; el historial de este mes podría estar incompleto');
     if(found.rows.length)imported+=await writeRows(db,found.rows);
    }
    completed++;
   };
-  // Concurrency stays low to avoid hitting Meta rate limits and function timeout.
+  // Four accounts run concurrently, and their feed/scheduled endpoints in parallel.
+  // Avoid an unbounded burst against Meta's API.
   let i=0;
-  const workers=Array.from({length:3},async()=>{while(i<matchedAssets.length){const target=matchedAssets[i++];try{await fetchOne(target)}catch(e){warnings.push(target.asset.display_name+': '+String(e.message||e).slice(0,130))}}});
+  const workers=Array.from({length:4},async()=>{while(i<matchedAssets.length){const target=matchedAssets[i++];try{await fetchOne(target)}catch(e){warnings.push(target.asset.display_name+': '+String(e.message||e).slice(0,130))}}});
   await Promise.all(workers);
-  return res.status(200).json({month,imported,assets_checked:completed,assets_available:matchedAssets.length,warnings:warnings.slice(0,35),history_note:'Las historias anteriores a las últimas 24 horas no se pueden recuperar desde esta API; el Hub guardará las que detecte en las próximas sincronizaciones.'});
+  const notices=warnings.slice(0,35);
+  const {error:saveError}=await db.from('hub_history_refreshes').upsert({
+   organization_id:org,month_key:month,refreshed_at:new Date().toISOString(),
+   assets_checked:completed,warnings:notices
+  },{onConflict:'organization_id,month_key'});
+  if(saveError)warnings.push('No se pudo guardar la caché: '+saveError.message.slice(0,110));
+  return res.status(200).json({month,imported,cached:false,assets_checked:completed,assets_available:matchedAssets.length,warnings:warnings.slice(0,35),history_note:'Las historias anteriores a las últimas 24 horas no se pueden recuperar desde esta API; el Hub guardará las que detecte en las próximas sincronizaciones.'});
  }catch(e){return res.status(500).json({error:'Error al leer el historial de Meta: '+String(e.message||e).slice(0,180)})}
 }
