@@ -85,7 +85,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   syncedMonths.current.set(key,Date.now());
   if(activeMonth.current===key){
    setSyncingHistory(true);
-   if(manual)setHistoryFeedback('Consultando publicaciones anteriores en Meta...');
+   if(manual)setHistoryFeedback('Consultando publicaciones y programación disponible en Meta...');
   }
   try{
    const {data:{session}}=await client.auth.getSession();
@@ -360,9 +360,9 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    <button className="primary" onClick={()=>setShowComposer(v=>!v)}><Plus size={16}/> {showComposer?'Cerrar editor':'Crear lote de publicaciones'}</button>
   </section>
   {message&&<p className="hub-cal-notice" role="status">{message}</p>}
-  <div className="hub-meta-history-bar"><div><strong>Historial de Meta</strong><small>{syncingHistory?'Sincronizando cuentas...':historyFeedback||'Publicaciones y reels importados de Facebook e Instagram, incluso si se crearon fuera del Hub.'}</small></div><button className="secondary" disabled={syncingHistory} onClick={()=>syncMetaHistory(monthKey,true)}><RefreshCw size={15} className={syncingHistory?'mh-spin':''}/> {syncingHistory?'Sincronizando...':'Sincronizar desde Meta'}</button></div>
+  <div className="hub-meta-history-bar"><div><strong>Publicaciones de Meta</strong><small>{syncingHistory?'Sincronizando cuentas...':historyFeedback||'Publicado en Facebook e Instagram, y programación futura de Facebook cuando Meta concede acceso.'}</small></div><button className="secondary" disabled={syncingHistory} onClick={()=>syncMetaHistory(monthKey,true)}><RefreshCw size={15} className={syncingHistory?'mh-spin':''}/> {syncingHistory?'Sincronizando...':'Sincronizar desde Meta'}</button></div>
   {historyWarnings.length>0&&<details className="hub-meta-history-warnings"><summary>Ver {historyWarnings.length} aviso(s) de sincronización</summary>{historyWarnings.map((w,i)=><p key={i}>{w}</p>)}</details>}
-  <p className="hub-meta-history-note">El historial importado es de solo lectura. Las historias que ya expiraron no pueden recuperarse retroactivamente; las detectadas desde ahora quedarán guardadas en el Hub.</p>
+  <p className="hub-meta-history-note">El contenido importado de Meta es de solo lectura. Las publicaciones futuras de Facebook se consultan cuando la API las permite. Las publicaciones, reels e historias programadas directamente en el <a href="https://business.facebook.com/latest/content_calendar" target="_blank" rel="noopener noreferrer">Planificador de Meta</a> para Instagram no están disponibles para importación completa mediante la API pública: no aparecerán aquí hasta publicarse. Las programadas desde GPC Hub sí aparecen con su fecha futura. Las historias ya expiradas tampoco son recuperables retroactivamente.</p>
   {showComposer&&<section className="hub-composer">
    <div className="hub-composer-heading"><h3>1. Subí la creatividad una sola vez</h3><span>Biblioteca privada de Supabase</span></div>
    <label className="hub-upload"><UploadCloud size={23}/><strong>{uploading?'Subiendo archivos...':'Elegir imágenes o videos'}</strong><span>JPG, PNG, WebP, MP4 o MOV · hasta 50 MB cada uno · 10 archivos</span><input disabled={uploading||saving} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" multiple onChange={e=>{uploadFiles(e.target.files);e.target.value=''}}/></label>
@@ -453,7 +453,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
     {permalink&&<a className="secondary hub-meta-post-link" href={permalink} target="_blank" rel="noopener noreferrer">Ver en Meta</a>}
    </div>;
   })}
-  {!loading&&!syncingHistory&&localShown.length+remoteShown.length===0&&<p className="hub-calendar-empty">No se encontraron publicaciones en estas fechas. Si ya hay contenido en Business Suite, tocá «Sincronizar desde Meta» y revisá los avisos de acceso.</p>}
+  {!loading&&!syncingHistory&&localShown.length+remoteShown.length===0&&<p className="hub-calendar-empty">No se encontraron contenidos accesibles para estas fechas. Si Meta Business Suite muestra publicaciones futuras de Facebook, tocá «Sincronizar desde Meta» y revisá los avisos de acceso. Las programaciones nativas de Instagram en Business Suite no se pueden importar por la API pública.</p>}
   </section>
  </div>;
 }
