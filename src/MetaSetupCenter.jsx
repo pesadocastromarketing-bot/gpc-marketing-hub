@@ -19,18 +19,18 @@ export default function MetaSetupCenter({client}){
   const json=await res.json();if(!res.ok)throw Error(json.error||'El HUB no pudo completar la operación');
   return json;
  }
- async function sync(){
-  setBusy(true);setMessage('Consultando Meta y actualizando tus cuentas...');
+ async function sync(force=false){
+  setBusy(true);setMessage(force===true?'Consultando Meta y actualizando tus cuentas...':'Cargando cuentas guardadas...');
   try{
-   const d=await call('/api/meta/inventory');
+   const d=await call(force===true?'/api/meta/inventory':'/api/meta/assets-fast?view=inventory');
    setAssets(d.assets||[]);setBrands(d.brands||[]);setCounts(d.counts||{ads:0,pages:0,instagram:0});
    setConnection(d.connection||{});setWarnings(d.warnings||[]);setAssignments({});
    const adsCount=d.counts?.ads||0,pageCount=d.counts?.pages||0,igCount=d.counts?.instagram||0;
-   setMessage('Sincronización lista: '+adsCount+' cuentas publicitarias, '+pageCount+' páginas y '+igCount+' Instagram.');
+   setMessage((d.cached?'Cuentas cargadas: ':'Sincronización lista: ')+adsCount+' cuentas publicitarias, '+pageCount+' páginas y '+igCount+' Instagram.');
   }catch(e){setMessage('No se pudo sincronizar: '+e.message)}
   finally{setBusy(false)}
  }
- useEffect(()=>{sync();const params=new URLSearchParams(window.location.search);if(params.has('meta_error'))setScopeMessage('Meta rechazó la autorización: '+params.get('meta_error'));if(params.has('meta_connected'))setScopeMessage('Meta confirmó la autorización. Se están actualizando las conexiones.');},[]);
+ useEffect(()=>{const params=new URLSearchParams(window.location.search);sync(params.has('meta_connected'));if(params.has('meta_error'))setScopeMessage('Meta rechazó la autorización: '+params.get('meta_error'));if(params.has('meta_connected'))setScopeMessage('Meta confirmó la autorización. Se están actualizando las conexiones.');},[]);
  const setBrand=(assetId,brandId)=>setAssignments(o=>({...o,[assetId]:brandId||null}));
  function propose(){
   const suggestions={};
@@ -73,7 +73,7 @@ export default function MetaSetupCenter({client}){
  }
  const toDisplay=assigned.filter(a=>!filter.trim()||[a.name,a.external_id,brandName(a.chosen_brand_id)].some(x=>String(x||'').toLowerCase().includes(filter.toLowerCase())));
  return <div className="gpc-meta-wizard">
-  <section className="gpc-wizard-intro"><div className="gpc-wizard-head"><div><span className="gpc-wizard-eyebrow">GPC MARKETING HUB · CONEXIONES</span><h2>Configurá Meta para las 8 unidades comerciales</h2><p>Reutilizamos la autorización publicitaria y detectamos las páginas e Instagram disponibles. Asociás las cuentas a los 6 concesionarios y las 2 unidades de usados en lote, sin cargar IDs ni tokens.</p></div><button className="primary" disabled={busy} onClick={sync}><RefreshCw size={17}/> {busy?'Sincronizando...':'Sincronizar Meta'}</button></div>
+  <section className="gpc-wizard-intro"><div className="gpc-wizard-head"><div><span className="gpc-wizard-eyebrow">GPC MARKETING HUB · CONEXIONES</span><h2>Configurá Meta para las 8 unidades comerciales</h2><p>Reutilizamos la autorización publicitaria y detectamos las páginas e Instagram disponibles. Asociás las cuentas a los 6 concesionarios y las 2 unidades de usados en lote, sin cargar IDs ni tokens.</p></div><button className="primary" disabled={busy} onClick={()=>sync(true)}><RefreshCw size={17}/> {busy?'Sincronizando...':'Sincronizar Meta'}</button></div>
    <div className="gpc-wizard-stats">
     <div><Megaphone size={20}/><strong>{counts.ads||0}</strong><span>cuentas publicitarias</span><small>{connection.ads?'Conectadas':'Pendiente'}</small></div>
     <div><Facebook size={20}/><strong>{counts.pages||0}</strong><span>páginas de Facebook</span><small>{connection.facebook?'Autorización registrada':'Requiere autorización'}</small></div>
