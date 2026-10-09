@@ -30,7 +30,7 @@ export default async function handler(req,res){
     url.searchParams.set('config_id',process.env.META_BUSINESS_LOGIN_CONFIG_ID);
     url.searchParams.set('override_default_response_type','true');
   }else{
-    const scopeMode=flow==='ads_manage'?'ads_read,ads_management':flow==='social_fb'?'pages_show_list,pages_read_engagement':flow==='social_publish'?'pages_show_list,pages_read_engagement,pages_manage_posts':flow==='social_ig'?'pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish':SCOPES;
+    const scopeMode=flow==='ads_manage'?'ads_read,ads_management':flow==='social_fb'?'pages_show_list,pages_read_engagement':flow==='social_publish'?'pages_show_list,pages_read_engagement,pages_manage_posts':flow==='social_ig'?'pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish':SCOPES;
     url.searchParams.set('scope',scopeMode);
     if(flow!=='ads')url.searchParams.set('auth_type','rerequest');
   }
