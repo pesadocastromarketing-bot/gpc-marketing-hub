@@ -1,4 +1,4 @@
-import React,{useEffect,useMemo,useState} from 'react';
+import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {CalendarDays,UploadCloud,Plus,Copy,Check,ChevronLeft,ChevronRight,Trash2,Image as ImageIcon,Video,Clock,Layers,RefreshCw} from 'lucide-react';
 import {BUSINESS_UNITS} from './businessUnits.js';
 
@@ -38,6 +38,13 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
  const [selectedRows,setSelectedRows]=useState([]);
  const [socialAssets,setSocialAssets]=useState([]),[exactDestinations,setExactDestinations]=useState([]);
  const [mediaUrls,setMediaUrls]=useState({});
+ const [externalPosts,setExternalPosts]=useState([]);
+ const [syncingHistory,setSyncingHistory]=useState(false);
+ const [historyFeedback,setHistoryFeedback]=useState('');
+ const [historyWarnings,setHistoryWarnings]=useState([]);
+ const syncedMonths=useRef(new Set());
+ const activeMonth=useRef('');
+ const monthKey=dateKey(month).slice(0,7);
  useEffect(()=>{setSelectedBrands(old=>old.length?old:allBrands.slice(0,1).map(x=>x.code))},[organizationId]);
  useEffect(()=>{if(openSignal>0)setShowComposer(true)},[openSignal]);
  async function refresh(){
@@ -54,6 +61,37 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   if(!c.error)setJobs(c.data||[]);
   setLoading(false);
  }
+ async function loadMetaHistory(key){
+  const start=key+'-01';
+  const end=dateKey(new Date(Number(key.slice(0,4)),Number(key.slice(5,7)),1));
+  const {data,error}=await client.from('hub_external_posts')
+   .select('id,meta_asset_id,external_id,network,format,status,local_date,local_time,caption,thumbnail_url,permalink_url,last_synced_at')
+   .eq('organization_id',organizationId).gte('local_date',start).lt('local_date',end)
+   .order('local_date',{ascending:true}).limit(1200);
+  if(error){setHistoryFeedback('No se pudo leer el historial guardado: '+error.message);return}
+  if(activeMonth.current===key)setExternalPosts(data||[]);
+ }
+ async function syncMetaHistory(key,manual=false){
+  if(syncedMonths.current.has(key)&&!manual)return;
+  syncedMonths.current.add(key);
+  setSyncingHistory(true);
+  if(manual)setHistoryFeedback('Consultando publicaciones anteriores en Meta...');
+  try{
+   const {data:{session}}=await client.auth.getSession();
+   if(!session?.access_token)throw Error('Iniciá sesión para consultar Meta');
+   const response=await fetch('/api/social/history',{method:'POST',headers:{Authorization:'Bearer '+session.access_token,'Content-Type':'application/json'},body:JSON.stringify({month:key})});
+   const data=await response.json();
+   if(!response.ok)throw Error(data.error||'No se pudo consultar Meta');
+   setHistoryWarnings(data.warnings||[]);
+   setHistoryFeedback('Meta: '+data.imported+' registros consultados de '+data.assets_checked+' cuentas. '+(data.warnings?.length?'Algunas cuentas requieren revisión.':'Historial actualizado.'));
+   await loadMetaHistory(key);
+  }catch(e){syncedMonths.current.delete(key);setHistoryFeedback('Historial de Meta: '+String(e.message||e))}
+  finally{setSyncingHistory(false)}
+ }
+ useEffect(()=>{
+  activeMonth.current=monthKey;setFilterDay('');setExternalPosts([]);setHistoryFeedback('');setHistoryWarnings([]);
+  loadMetaHistory(monthKey).then(()=>syncMetaHistory(monthKey));
+ },[monthKey,organizationId]);
  useEffect(()=>{refresh();let active=true;(async()=>{try{const {data:{session}}=await client.auth.getSession();const r=await fetch('/api/meta/assets-fast?view=social',{headers:{Authorization:'Bearer '+session?.access_token}});const j=await r.json();if(active&&r.ok)setSocialAssets((j.assets||[]).filter(a=>a.brand_id&&['page','instagram_account'].includes(a.kind)));}catch(_){}})();return()=>{active=false}},[organizationId]);
  useEffect(()=>{
   const unique=[...new Set(items.filter(p=>p.scheduled_date?.startsWith(dateKey(month).slice(0,7))).flatMap(p=>p.media_paths||[]))].slice(0,45);
