@@ -22,7 +22,7 @@ export default function MetaSetupCenter({client}){
  async function sync(force=false){
   setBusy(true);setMessage(force===true?'Consultando Meta y actualizando tus cuentas...':'Cargando cuentas guardadas...');
   try{
-   const d=await call('/api/meta/inventory'+(force===true?'?refresh=1':''));
+   const d=await call(force===true?'/api/meta/inventory':'/api/meta/assets-fast?view=inventory');
    setAssets(d.assets||[]);setBrands(d.brands||[]);setCounts(d.counts||{ads:0,pages:0,instagram:0});
    setConnection(d.connection||{});setWarnings(d.warnings||[]);setAssignments({});
    const adsCount=d.counts?.ads||0,pageCount=d.counts?.pages||0,igCount=d.counts?.instagram||0;
