@@ -20,9 +20,9 @@ export default async function handler(req,res){
   const {data:asset}=await db.from('hub_meta_assets').select('id').eq('id',req.body.asset_id).eq('organization_id',member.organization_id).eq('kind','instagram_account').maybeSingle();
   if(!asset)return res.status(404).json({error:'Instagram no encontrado'});
   const state=randomBytes(32).toString('hex');
-  const {error:stateError}=await db.schema('hub_private').from('instagram_login_states').insert({
-   state_hash:digest(state),organization_id:member.organization_id,
-   asset_id:asset.id,requested_by:user.id,expires_at:new Date(Date.now()+10*60*1000).toISOString()
+  const {error:stateError}=await db.rpc('hub_ig_login_state_create',{
+   p_hash:digest(state),p_org:member.organization_id,
+   p_asset:asset.id,p_user:user.id,p_expires:new Date(Date.now()+10*60*1000).toISOString()
   });
   if(stateError)throw stateError;
   const callback=BASE_URL+'/api/instagram/callback';
