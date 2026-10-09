@@ -50,10 +50,9 @@ export default async function handler(req,res){
   const ig=socialConns.some(x=>(x.scopes||[]).includes('instagram_basic')&&(x.scopes||[]).includes('instagram_content_publish'));
   const igReady=(asset)=>socialConns.some(x=>x.meta_user_id===asset.metadata?.meta_user_id&&
     (x.scopes||[]).includes('instagram_basic')&&(x.scopes||[]).includes('instagram_content_publish'));
-  const {data:directConnections,error:directError}=await db.schema('hub_private').from('instagram_direct_connections')
-   .select('asset_id,expires_at').eq('organization_id',org);
+  const {data:directConnections,error:directError}=await db.rpc('hub_ig_direct_tokens');
   if(directError)throw directError;
-  const directReady=asset=>(directConnections||[]).some(c=>c.asset_id===asset.id&&Date.parse(c.expires_at)>Date.now());
+  const directReady=asset=>(directConnections||[]).some(c=>c.organization_id===org&&c.asset_id===asset.id&&Date.parse(c.expires_at)>Date.now());
   const all=assetsResult.data||[],brands=brandsResult.data||[];
   if(view==='ads')return res.status(200).json({
    accounts:hasAdAccess?all.filter(x=>x.kind==='ad_account').map(x=>({
