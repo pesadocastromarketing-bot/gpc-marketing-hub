@@ -463,9 +463,32 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    <button className="primary" onClick={()=>setShowComposer(v=>!v)}><Plus size={16}/> {showComposer?'Cerrar editor':'Crear lote de publicaciones'}</button>
   </section>
   {message&&<p className="hub-cal-notice" role="status">{message}</p>}
-  <div className="hub-meta-history-bar"><div><strong>Publicaciones de Meta</strong><small>{syncingHistory?'Sincronizando cuentas...':historyFeedback||'Publicado en Facebook e Instagram, y programación futura de Facebook cuando Meta concede acceso.'}</small></div><button className="secondary" disabled={syncingHistory} onClick={()=>syncMetaHistory(monthKey,true)}><RefreshCw size={15} className={syncingHistory?'mh-spin':''}/> {syncingHistory?'Sincronizando...':'Sincronizar desde Meta'}</button></div>
+  <div className="hub-meta-history-bar"><div><strong>Publicaciones de Meta</strong><small>{syncingHistory?'Sincronizando cuentas...':historyFeedback||'Publicado en Facebook e Instagram, y programación futura de Facebook cuando Meta concede acceso.'}</small></div><button className="secondary" disabled={syncingHistory} onClick={()=>syncMetaHistory(monthKey,true)}><RefreshCw size={15} className={syncingHistory?'mh-spin':''}/> {syncingHistory?'Sincronizando...':'Sincronizar desde Meta'}</button><button type="button" className="secondary" onClick={()=>setShowPlannerImport(x=>!x)}><CalendarDays size={15}/>{showPlannerImport?'Cerrar importación':'Importar agenda existente'}</button></div>
   {historyWarnings.length>0&&<details className="hub-meta-history-warnings"><summary>Ver {historyWarnings.length} aviso(s) de sincronización</summary>{historyWarnings.map((w,i)=><p key={i}>{w}</p>)}</details>}
   <p className="hub-meta-history-note">El contenido importado de Meta es de solo lectura. Las publicaciones futuras de Facebook se consultan cuando la API las permite. Las publicaciones, reels e historias programadas directamente en el <a href="https://business.facebook.com/latest/content_calendar" target="_blank" rel="noopener noreferrer">Planificador de Meta</a> para Instagram no están disponibles para importación completa mediante la API pública: no aparecerán aquí hasta publicarse. Las programadas desde GPC Hub sí aparecen con su fecha futura. Las historias ya expiradas tampoco son recuperables retroactivamente.</p>
+  {showPlannerImport&&<section className="hub-planner-import">
+   <h3>Importar historias y publicaciones que ya programaste en Meta</h3>
+   <p>Meta no ofrece por API el calendario futuro completo de Instagram. Este importador incorpora tus contenidos existentes como <strong>referencias de solo lectura</strong>; el Hub no los volverá a publicar.</p>
+   <p>Podés pegar una tabla de Excel/Sheets o cargar un CSV. Columnas: <strong>fecha;hora;cuenta;tipo;texto</strong>. Formatos admitidos: Historia, Reel, Imagen, Carrusel o Video. Usá el @usuario o ID exacto de Instagram/Facebook. Fecha dd/mm/aaaa y horario argentino.</p>
+   <div className="hub-planner-import-actions">
+    <label className="secondary">Elegir CSV / TXT
+     <input type="file" accept=".csv,.tsv,.txt,text/csv,text/plain" onChange={async e=>{
+      const file=e.target.files?.[0];e.target.value='';if(!file)return;
+      if(file.size>1024*1024){setPlannerMessage('El archivo supera 1 MB');return}
+      setPlannerRaw(await file.text());setPlannerMessage('');
+     }}/>
+    </label>
+    <button type="button" className="secondary" onClick={()=>{setPlannerRaw('fecha;hora;cuenta;tipo;texto\n15/10/2026;10:00;@renault.circular;Historia;Campaña de octubre');setPlannerMessage('')}}>Ver ejemplo editable</button>
+   </div>
+   <textarea aria-label="Agenda de Meta en CSV" rows={6} value={plannerRaw} onChange={e=>{setPlannerRaw(e.target.value);setPlannerMessage('')}} placeholder={'fecha;hora;cuenta;tipo;texto\n15/10/2026;10:00;@renault.circular;Historia;Campaña octubre'}/>
+   <div className="hub-planner-import-result">
+    <strong>{resolvedPlanner.entries.length} contenidos listos para registrar</strong>
+    {resolvedPlanner.errors.length>0&&<div className="hub-planner-import-errors">{resolvedPlanner.errors.slice(0,12).map((e,i)=><small key={i}>{e}</small>)}</div>}
+    {resolvedPlanner.entries.slice(0,5).map((p,i)=><small key={i}>{p.date} · {p.time} · {p.account_name} · {p.format} · {p.caption.slice(0,40)}</small>)}
+    <button type="button" className="primary" disabled={plannerBusy||!resolvedPlanner.entries.length||resolvedPlanner.entries.length>1000||resolvedPlanner.errors.length>0} onClick={importExistingPlanner}>{plannerBusy?'Registrando...':'Registrar '+resolvedPlanner.entries.length+' referencias sin publicar'}</button>
+   </div>
+   {plannerMessage&&<p className="hub-cal-notice" role="status">{plannerMessage}</p>}
+  </section>}
   {showComposer&&<section className="hub-composer">
    <div className="hub-composer-heading"><h3>1. Subí la creatividad una sola vez</h3><span>Biblioteca privada de Supabase</span></div>
    <label className="hub-upload"><UploadCloud size={23}/><strong>{uploading?'Subiendo archivos...':'Elegir imágenes o videos'}</strong><span>JPG, PNG, WebP, MP4 o MOV · hasta 50 MB cada uno · 10 archivos</span><input disabled={uploading||saving} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" multiple onChange={e=>{uploadFiles(e.target.files);e.target.value=''}}/></label>
@@ -552,8 +575,9 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    const permalink=(()=>{try{const u=new URL(p.permalink_url);return u.protocol==='https:'&&['facebook.com','www.facebook.com','instagram.com','www.instagram.com','m.facebook.com'].includes(u.hostname)?u.href:null}catch{return null}})();
    return <div className="hub-cal-entry hub-external-entry" key={p.id}>
     {p.thumbnail_url?<img src={p.thumbnail_url} alt="" loading="lazy" referrerPolicy="no-referrer"/>:<span className="hub-cal-entry-image"><ImageIcon size={19}/></span>}
-    <div><strong>{p.format} · {asset?.name||p.network}</strong><small>{moneyDate(p.local_date)} · {(p.local_time||'').slice(0,5)} · {p.network} · {p.status==='scheduled'?'Programado en Meta':'Publicado en Meta'}</small><small>{p.caption?.slice(0,150)||'Sin descripción'}</small></div>
+    <div><strong>{p.format} · {asset?.name||p.network}</strong><small>{moneyDate(p.local_date)} · {(p.local_time||'').slice(0,5)} · {p.network} · {p.external_id?.startsWith('planner:')?'Registrado desde Planificador Meta (referencia) · NO publica el Hub':p.status==='scheduled'?'Programado en Meta':'Publicado en Meta'}</small><small>{p.caption?.slice(0,150)||'Sin descripción'}</small></div>
     {permalink&&<a className="secondary hub-meta-post-link" href={permalink} target="_blank" rel="noopener noreferrer">Ver en Meta</a>}
+     {p.external_id?.startsWith('planner:')&&<button type="button" className="secondary" onClick={()=>removePlannerReference(p)}>Quitar referencia</button>}
    </div>;
   })}
   {!loading&&!syncingHistory&&localShown.length+remoteShown.length===0&&<p className="hub-calendar-empty">No se encontraron contenidos accesibles para estas fechas. Si Meta Business Suite muestra publicaciones futuras de Facebook, tocá «Sincronizar desde Meta» y revisá los avisos de acceso. Las programaciones nativas de Instagram en Business Suite no se pueden importar por la API pública.</p>}
