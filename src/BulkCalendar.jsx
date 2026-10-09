@@ -10,6 +10,9 @@ const today=dateKey(new Date());
 const id=()=>crypto.randomUUID();
 const calendarCells=month=>{const start=(new Date(month.getFullYear(),month.getMonth(),1).getDay()+6)%7;return Array.from({length:42},(_,i)=>new Date(month.getFullYear(),month.getMonth(),1+i-start))};
 const channels=['Instagram','Facebook'];
+const assetChannel=a=>a?.kind==='page'?'Facebook':'Instagram';
+const destinationName=a=>a?.kind==='instagram_account'?'@'+String(a.name||'').replace(/^@/,''):(a?.name||'Página sin nombre');
+const destinationLabel=a=>assetChannel(a)+' · '+destinationName(a)+' (ID '+a.external_id+')';
 const isVideoMime=m=>m?.startsWith('video/');
 const maxMediaCount=10;
 function moneyDate(s){return new Date(s+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'})}
@@ -85,13 +88,25 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   }catch(e){setMessage('Error al subir creatividad: '+e.message)}
   finally{setUploading(false)}
  }
- const useExact=exactDestinations.length>0;
- const selectedTargets=socialAssets.filter(a=>exactDestinations.includes(a.id));
- const destinationCount=useExact?selectedTargets.length:selectedBrands.length*selectedChannels.length;
+ // Never infer the publishing account from a dealership alone: Instagram can have parallel profiles.
+ const selectedBrandIds=new Set(selectedBrands.map(code=>brandIds[code]).filter(Boolean));
+ const selectedTargets=socialAssets.filter(a=>exactDestinations.includes(a.id)&&selectedBrandIds.has(a.brand_id)&&selectedChannels.includes(assetChannel(a)));
+ const destinationCount=selectedTargets.length;
  const estimated=dates.length*destinationCount;
+ function toggleBrand(code,checked){
+  setSelectedBrands(old=>checked?[...new Set([...old,code])]:old.filter(x=>x!==code));
+  if(!checked)setExactDestinations(old=>old.filter(assetId=>socialAssets.find(a=>a.id===assetId)?.brand_id!==brandIds[code]));
+ }
+ function toggleChannel(channel,checked){
+  setSelectedChannels(old=>checked?[...new Set([...old,channel])]:old.filter(x=>x!==channel));
+  if(!checked)setExactDestinations(old=>old.filter(assetId=>assetChannel(socialAssets.find(a=>a.id===assetId))!==channel));
+ }
  async function saveBatch(){
-  if(!title.trim()||!dates.length||(!useExact&&(!selectedBrands.length||!selectedChannels.length))||!selectedMedia.length){
-   setMessage('Completá título, creatividad, fechas, marcas y redes sociales.');return;
+  if(!title.trim()||!dates.length||!selectedBrands.length||!selectedChannels.length||!selectedMedia.length){
+   setMessage('Completá título, creatividad, fechas, concesionarios y redes sociales.');return;
+  }
+  if(!selectedTargets.length){
+   setMessage('Elegí al menos una cuenta real de Instagram o una página de Facebook. Si no aparece, vinculala desde Configuración → Meta.');return;
   }
   if(estimated>200){setMessage('Máximo 200 publicaciones por lote. Dividí la planificación.');return}
   const files=selectedMedia.map(p=>media.find(m=>m.storage_path===p)).filter(Boolean);
@@ -105,10 +120,11 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    setMessage('Los formatos Imagen e Historia requieren imágenes; elegí Reel para video.');return
   }
   if(dates.some(d=>d<today)){setMessage('No se pueden planificar publicaciones en fechas pasadas.');return}
-  if(!window.confirm('¿Crear '+estimated+' publicaciones en '+dates.length+' fecha(s) para '+destinationCount+' destino(s)?\n\n'+(planMode==='pending_authorization'?'El HUB intentará programar AUTOMÁTICAMENTE las cuentas autorizadas. Las que no tengan permisos quedarán pendientes.':'Quedarán como borradores y NO se publicarán.')))return;
+  const preciseTargets=selectedTargets.map(a=>'• '+(allBrands.find(b=>b.id===a.brand_id)?.name||'Unidad sin nombre')+' — '+destinationLabel(a)).join('\n');
+  if(!window.confirm('¿Crear '+estimated+' publicaciones en '+dates.length+' fecha(s)?\n\nSE PUBLICARÁ EN ESTAS CUENTAS EXACTAS:\n'+preciseTargets+'\n\n'+(planMode==='pending_authorization'?'El HUB intentará programar AUTOMÁTICAMENTE solo estas cuentas autorizadas. Las que no tengan permisos quedarán pendientes.':'Quedarán como borradores y NO se publicarán.')))return;
   setSaving(true);setMessage('');
   const batchId=id();
-  const targets=useExact?selectedTargets.map(a=>({brand_id:a.brand_id,channel:a.kind==='page'?'Facebook':'Instagram',target_asset_id:a.id})):selectedBrands.flatMap(code=>selectedChannels.map(channel=>({brand_id:brandIds[code],channel,target_asset_id:null})));
+  const targets=selectedTargets.map(a=>({brand_id:a.brand_id,channel:assetChannel(a),target_asset_id:a.id}));
   const rows=dates.flatMap(date=>targets.map(target=>({
     organization_id:organizationId,brand_id:target.brand_id,target_asset_id:target.target_asset_id,title:title.trim(),copy_text:copy.trim(),format,
     scheduled_date:date,scheduled_time:time,channels:[target.channel],media_paths:selectedMedia,
@@ -131,7 +147,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
     }
     summary+=' Programadas automáticamente: '+success+'. Pendientes: '+failed+'.'+(details.length?' '+[...new Set(details)].slice(0,3).join(' | '):'');
    }
-   setMessage(summary);setShowComposer(false);setDates([dateOffset(today,1)]);setSelectedMedia([]);setTitle('');setCopy('');
+   setMessage(summary);setShowComposer(false);setDates([dateOffset(today,1)]);setSelectedMedia([]);setExactDestinations([]);setTitle('');setCopy('');
    await refresh();
   }catch(e){setMessage('No se pudo guardar el lote: '+e.message)}
   finally{setSaving(false)}
@@ -139,7 +155,18 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
  async function scheduleSelected(){
   if(!selectedRows.length)return;
   if(selectedRows.length>100){setMessage('Máximo 100 publicaciones para programar en un lote.');return}
-  if(!window.confirm('ATENCIÓN: Vas a programar '+selectedRows.length+' publicación(es) para que Meta las publique automáticamente en las fechas y redes correspondientes. ¿Confirmás?'))return;
+  const rowsToSchedule=items.filter(p=>selectedRows.includes(p.id));
+  const resolved=rowsToSchedule.map(p=>{
+   const accounts=socialAssets.filter(a=>a.brand_id===p.brand_id&&assetChannel(a)===p.channels?.[0]);
+   const target=p.target_asset_id?accounts.find(a=>a.id===p.target_asset_id):(accounts.length===1?accounts[0]:null);
+   return {post:p,target};
+  });
+  const unresolved=resolved.filter(x=>!x.target);
+  if(unresolved.length){
+   setMessage('No se programó nada: '+unresolved.length+' publicación(es) no tienen un destino único y verificable. Replicalas y seleccioná la cuenta exacta de Instagram o Facebook.');return;
+  }
+  const destinations=[...new Set(resolved.map(x=>(allBrands.find(b=>b.id===x.post.brand_id)?.name||'Unidad')+' — '+destinationLabel(x.target)))];
+  if(!window.confirm('ATENCIÓN: Vas a programar '+selectedRows.length+' publicación(es) en Meta.\n\nDESTINOS EXACTOS:\n'+destinations.map(x=>'• '+x).join('\n')+'\n\n¿Confirmás?'))return;
   setSaving(true);setMessage('Comprobando destinos y permisos de Meta...');
   try{
    const {data:{session}}=await client.auth.getSession();
@@ -180,23 +207,49 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
     <small title={file.filename}>{file.filename}</small>{selectedMedia.includes(file.storage_path)&&<Check size={17} className="hub-media-check"/>}</button>)}</div></div>}
    <div className="hub-composer-two"><label>Título interno<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Ej. Amarok tasa 0%"/></label><label>Formato<select value={format} onChange={e=>setFormat(e.target.value)}><option>Imagen</option><option>Carrusel</option><option>Reel</option><option>Historia</option></select></label></div>
    <label className="hub-wide-label">Copy de la publicación<textarea rows="3" placeholder="Texto que se reutilizará en todas las fechas y cuentas..." value={copy} onChange={e=>setCopy(e.target.value)}/></label>
-   <div className="hub-composer-heading"><h3>2. Elegí las marcas y los canales</h3><span>Podés seleccionar varios destinos</span></div>
+   <div className="hub-composer-heading"><h3>2. Elegí los concesionarios y cada cuenta exacta</h3><span>Oficiales y paralelas, siempre por separado</span></div>
    <div className="hub-business-units">
     {[{type:'dealership',label:'Concesionarios (6)'},{type:'used',label:'Usados (2)'}].map(group=><div key={group.type}>
      <strong>{group.label}</strong>
-     <div className="hub-check-list">{allBrands.filter(b=>b.type===group.type).map(b=><label key={b.id}><input type="checkbox" checked={selectedBrands.includes(b.code)} onChange={e=>setSelectedBrands(v=>e.target.checked?[...v,b.code]:v.filter(x=>x!==b.code))}/>{b.name}</label>)}</div>
+     <div className="hub-check-list">{allBrands.filter(b=>b.type===group.type).map(b=><label key={b.id}><input type="checkbox" checked={selectedBrands.includes(b.code)} onChange={e=>toggleBrand(b.code,e.target.checked)}/>{b.name}</label>)}</div>
     </div>)}
    </div>
-   <div className="hub-check-list">{channels.map(channel=><label key={channel}><input type="checkbox" checked={selectedChannels.includes(channel)} onChange={e=>setSelectedChannels(v=>e.target.checked?[...v,channel]:v.filter(x=>x!==channel))}/>{channel}</label>)}</div>
-   {socialAssets.length>0&&<div className="hub-destination-picker"><strong>Destinos exactos (opcional)</strong><p>Si una marca tiene varias páginas o perfiles, elegí exactamente dónde publicar. Esto reemplaza la selección de marcas y redes de arriba.</p><div className="hub-check-list">{socialAssets.map(a=><label key={a.id}><input type="checkbox" checked={exactDestinations.includes(a.id)} onChange={e=>setExactDestinations(old=>e.target.checked?[...old,a.id]:old.filter(x=>x!==a.id))}/>{a.kind==='page'?'Facebook':'Instagram'} · {a.name} <small>({BRAND_NAMES[allBrands.find(b=>b.id===a.brand_id)?.code]||'Marca'})</small></label>)}</div>{exactDestinations.length>0&&<button className="quiet" onClick={()=>setExactDestinations([])}>Usar marcas y redes en vez de perfiles exactos</button>}</div>}
+   <div className="hub-check-list">{channels.map(channel=><label key={channel}><input type="checkbox" checked={selectedChannels.includes(channel)} onChange={e=>toggleChannel(channel,e.target.checked)}/>{channel}</label>)}</div>
+   <div className="hub-destination-picker">
+    <strong>¿En qué cuentas EXACTAS se va a publicar?</strong>
+    <p>Marcá cada @usuario de Instagram o página de Facebook. Las cuentas oficiales y las paralelas nunca se seleccionan automáticamente; elegí solamente las que querés usar.</p>
+    {selectedBrands.length===0||selectedChannels.length===0?<p className="hub-destination-empty">Elegí primero un concesionario y al menos una red social.</p>:
+    <div className="hub-destination-groups">
+     {allBrands.filter(b=>selectedBrands.includes(b.code)).map(b=><div className="hub-destination-unit" key={b.id}>
+      <h4>{b.name}</h4>
+      {selectedChannels.map(channel=>{
+       const options=socialAssets.filter(a=>a.brand_id===b.id&&assetChannel(a)===channel).sort((a,z)=>String(a.name).localeCompare(String(z.name)));
+       return <div className="hub-destination-network" key={channel}>
+        <strong>{channel} <span>{options.length} cuenta(s) vinculada(s)</span></strong>
+        {options.length?<div className="hub-destination-options">{options.map(a=><label key={a.id} className={'hub-destination-option '+(exactDestinations.includes(a.id)?'selected':'')}>
+         <input type="checkbox" checked={exactDestinations.includes(a.id)} onChange={e=>setExactDestinations(old=>e.target.checked?[...new Set([...old,a.id])]:old.filter(id=>id!==a.id))}/>
+         <span><b>{destinationName(a)}</b><small>{channel==='Facebook'?'Página de Facebook':'Cuenta profesional de Instagram'} · ID {a.external_id}</small>
+          {channel==='Facebook'&&!a.is_ready&&<small className="hub-destination-permission">Sin permiso CREATE_CONTENT; se podrá guardar como borrador, pero no programar aún.</small>}
+         </span>
+        </label>)}</div>:
+        <p className="hub-destination-empty">No hay una cuenta de {channel} vinculada a {b.name}. Revisá Configuración → Meta para asignarla.</p>}
+       </div>
+      })}
+     </div>)}
+    </div>}
+    <small className="hub-destination-note">El HUB guardará el ID exacto de Meta de cada destino, no solo el nombre del concesionario.</small>
+   </div>
    <div className="hub-composer-heading"><h3>3. Elegí todas las fechas</h3><span>Hora de Argentina (UTC−3)</span></div>
    <div className="hub-date-controls"><input type="date" min={today} value={manualDate} onChange={e=>setManualDate(e.target.value)}/><button className="secondary" onClick={()=>addDate(manualDate)}>Agregar fecha</button><input type="time" value={time} onChange={e=>setTime(e.target.value)}/></div>
    <div className="hub-shortcuts"><button onClick={()=>addDate(today)}>Hoy</button><button onClick={()=>addDate(dateOffset(today,1))}>Mañana</button><button onClick={()=>addDate(dateOffset(today,7))}>+7 días</button><button onClick={()=>addDate(dateOffset(today,14))}>+14 días</button><button onClick={()=>repeat(7)}>4 semanas seguidas</button><button onClick={()=>repeat(30)}>4 meses seguidos</button></div>
    <div className="hub-date-pills">{dates.map(d=><button key={d} onClick={()=>removeDate(d)}>{moneyDate(d)} <span>×</span></button>)}</div>
    <div className="hub-composer-heading"><h3>4. Guardá todas las publicaciones</h3></div>
    <div className="hub-check-list"><label><input type="radio" checked={planMode==='draft'} onChange={()=>setPlanMode('draft')}/>Borradores</label><label><input type="radio" checked={planMode==='pending_authorization'} onChange={()=>setPlanMode('pending_authorization')}/>Crear y programar automáticamente donde Meta lo permita</label></div>
-   <div className="hub-submit"><div><strong>{estimated} publicaciones</strong><small>{dates.length} fechas × {destinationCount} destino(s) {useExact?'seleccionados':'por marcas y redes'}</small></div><button className="primary" disabled={saving||uploading||estimated===0} onClick={saveBatch}>{saving?'Guardando...':(planMode==='pending_authorization'?'Crear y programar ':'Crear ')+estimated+' publicaciones'}</button></div>
-   <p className="hub-calendar-warning">Elegí «Borradores» para solamente guardar. «Crear y programar» intentará enviarlas a la cola de Meta al guardar; las cuentas sin autorización no se publicarán y quedarán pendientes. Se requiere autorización de Facebook/Instagram por marca.</p>
+   <div className="hub-destination-review"><strong>Se va a publicar en:</strong>
+    {selectedTargets.length?<ul>{selectedTargets.map(a=><li key={a.id}><strong>{allBrands.find(b=>b.id===a.brand_id)?.name||'Unidad'}</strong> · {destinationLabel(a)}</li>)}</ul>:<p>Seleccioná la cuenta exacta arriba para continuar. No se elegirá ningún perfil por defecto.</p>}
+   </div>
+   <div className="hub-submit"><div><strong>{estimated} publicaciones</strong><small>{dates.length} fechas × {destinationCount} cuenta(s) exacta(s)</small></div><button className="primary" disabled={saving||uploading||estimated===0} onClick={saveBatch}>{saving?'Guardando...':(planMode==='pending_authorization'?'Crear y programar ':'Crear ')+estimated+' publicaciones'}</button></div>
+   <p className="hub-calendar-warning">No se publicará en otros perfiles del concesionario: solo en los destinos exactos que seleccionaste arriba. «Crear y programar» requiere permisos de Meta; si faltan, las publicaciones quedarán sin programar. «Borradores» no publica nada.</p>
   </section>}
   <section className="hub-calendar-view">
    <div className="hub-calendar-month"><button aria-label="Mes anterior" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}><ChevronLeft size={18}/></button><strong>{month.toLocaleDateString('es-AR',{month:'long',year:'numeric'})}</strong><button aria-label="Mes siguiente" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}><ChevronRight size={18}/></button><span>{inMonth.length} publicaciones</span><button className="secondary" onClick={refresh} disabled={loading}><RefreshCw size={14}/> Actualizar</button></div>
@@ -208,7 +261,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    {(filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth).slice(0,150).map(p=><div key={p.id} className="hub-cal-entry">
      <input aria-label={'Seleccionar '+p.title} type="checkbox" disabled={p.status!=='draft'||jobs.some(j=>j.content_id===p.id)} checked={selectedRows.includes(p.id)} onChange={e=>setSelectedRows(v=>e.target.checked?[...v,p.id]:v.filter(x=>x!==p.id))}/>
      {p.media_paths?.length&&mediaUrls[p.media_paths[0]]&&p.format!=='Reel'?<img src={mediaUrls[p.media_paths[0]]} alt="" loading="lazy"/>:<span className="hub-cal-entry-image"><ImageIcon size={19}/></span>}
-     <div><strong>{p.title}</strong><small>{moneyDate(p.scheduled_date)} · {(p.scheduled_time||'18:00').slice(0,5)} · {BRAND_NAMES[allBrands.find(b=>b.id===p.brand_id)?.code]||'Marca'} · {(p.channels||[]).join(', ')}</small><small>{(jobs.find(j=>j.content_id===p.id)?.status==='published'||p.status==='published')?'Publicado':(jobs.find(j=>j.content_id===p.id)?.status==='failed'||p.status==='failed')?'Error de publicación':jobs.find(j=>j.content_id===p.id)?.status==='publishing'?'En proceso en Meta':(jobs.find(j=>j.content_id===p.id)?.status==='queued'||p.status==='scheduled')?'Programado en Meta':p.publication_mode==='pending_authorization'?'Pendiente de autorización Meta':'Borrador'} · {(p.media_paths||[]).length} archivo(s)</small>{jobs.find(j=>j.content_id===p.id)?.error_message&&<small style={{color:'#c13245'}}>Error: {jobs.find(j=>j.content_id===p.id)?.error_message}</small>}</div>
+     <div><strong>{p.title}</strong><small>{moneyDate(p.scheduled_date)} · {(p.scheduled_time||'18:00').slice(0,5)} · {BRAND_NAMES[allBrands.find(b=>b.id===p.brand_id)?.code]||'Marca'} · {socialAssets.find(a=>a.id===p.target_asset_id)?destinationLabel(socialAssets.find(a=>a.id===p.target_asset_id)):(p.target_asset_id?'Destino no disponible — revisá Meta':'Destino exacto sin definir')}</small><small>{(jobs.find(j=>j.content_id===p.id)?.status==='published'||p.status==='published')?'Publicado':(jobs.find(j=>j.content_id===p.id)?.status==='failed'||p.status==='failed')?'Error de publicación':jobs.find(j=>j.content_id===p.id)?.status==='publishing'?'En proceso en Meta':(jobs.find(j=>j.content_id===p.id)?.status==='queued'||p.status==='scheduled')?'Programado en Meta':p.publication_mode==='pending_authorization'?'Pendiente de autorización Meta':'Borrador'} · {(p.media_paths||[]).length} archivo(s)</small>{jobs.find(j=>j.content_id===p.id)?.error_message&&<small style={{color:'#c13245'}}>Error: {jobs.find(j=>j.content_id===p.id)?.error_message}</small>}</div>
      <button title="Replicar esta publicación en otras fechas" className="secondary" onClick={()=>clone(p)}><Copy size={16}/> Replicar</button>
    </div>)}
    {!loading&&(filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth).length===0&&<p className="hub-calendar-empty">No hay publicaciones en estas fechas. Creá un lote para empezar.</p>}
