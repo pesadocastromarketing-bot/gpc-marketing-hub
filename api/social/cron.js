@@ -74,13 +74,21 @@ async function publishIg(ig,token,post,media,existingContainer){
    container=result.id;
    if(!container)throw Error('Meta no creó contenedor de Reel');
    return {processing:true,container};
+  }else if(post.format==='Historia'){
+   // Meta creates a container first for both photo and video Stories. Poll until it is ready.
+   const video=/\.(mp4|mov)(?:\?|$)/i.test(media[0])||/\.(mp4|mov)$/i.test(post.media_paths?.[0]||'');
+   const payload=video?{media_type:'STORIES',video_url:media[0]}:{media_type:'STORIES',image_url:media[0]};
+   const result=await graph(token,ig+'/media',payload);
+   container=result.id;
+   if(!container)throw Error('Meta no creó contenedor de Historia');
+   return {processing:true,container};
   }else throw Error('Formato Instagram no soportado');
  }
  if(!container)throw Error('No se creó contenedor de Instagram');
- if(post.format==='Reel'){
+ if(post.format==='Reel'||post.format==='Historia'){
   const j=await fetch(GRAPH+'/'+container+'?fields=status_code',{headers:{Authorization:'Bearer '+token}}).then(x=>x.json());
   if(j.error)throw Error(j.error.message||'Error de procesamiento en Meta');
-  if(j.status_code==='ERROR'||j.status_code==='EXPIRED')throw Error('Meta rechazó o venció el procesamiento de Reel');
+  if(j.status_code==='ERROR'||j.status_code==='EXPIRED')throw Error('Meta rechazó o venció el procesamiento de '+(post.format==='Historia'?'Historia':'Reel'));
   if(j.status_code!=='FINISHED')return {processing:true,container};
  }
  const result=await graph(token,ig+'/media_publish',{creation_id:container});
