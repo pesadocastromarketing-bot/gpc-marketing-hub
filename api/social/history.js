@@ -43,7 +43,9 @@ function argentinaDate(instant){
  return {date:p.year+'-'+p.month+'-'+p.day,time:p.hour+':'+p.minute};
 }
 function normalize(asset,item,scheduled=false){
- const rawTimestamp=item.timestamp||item.created_time||item.scheduled_publish_time;
+ // Meta includes BOTH created_time and scheduled_publish_time for Page scheduled posts.
+ // Use the planned publication date, never the date the draft was created.
+ const rawTimestamp=scheduled?item.scheduled_publish_time:(item.timestamp||item.created_time);
  const from=typeof rawTimestamp==='number'||/^\d{10}$/.test(String(rawTimestamp||''))
   ?new Date(Number(rawTimestamp)*1000).toISOString():rawTimestamp;
  const iso=new Date(from);
@@ -82,7 +84,9 @@ async function retrieve(token,asset,month,edge,fields,extra={}){
    if(normalized.local_date<earliest)older=true;
    if(normalized.local_date>=earliest&&normalized.local_date<latest)rows.push(normalized);
   }
-  if(older||!result.paging?.next||!result.paging?.cursors?.after)break;
+  // /scheduled_posts may be ordered by creation date, not scheduled time.
+  // Don't terminate early on an older item when looking for future scheduled dates.
+  if((older&&edge!=='scheduled_posts')||!result.paging?.next||!result.paging?.cursors?.after)break;
   cursor=result.paging.cursors.after;
   if(page===5)truncated=true;
  }
@@ -156,7 +160,7 @@ export default async function handler(req,res){
     ...(month===thisMonth?[['stories','id,media_type,timestamp,media_url,thumbnail_url',{_story:true}]]:[])
    ]:[
     ['posts','id,message,created_time,permalink_url,full_picture',{}],
-    ['scheduled_posts','id,message,scheduled_publish_time,full_picture',{}]
+    ['scheduled_posts','id,message,scheduled_publish_time,created_time,full_picture,permalink_url',{}]
    ];
    const results=await Promise.all(jobs.map(async ([edge,fields,extra])=>({edge,found:await retrieve(pageToken,asset,month,edge,fields,extra)})));
    for(const {edge,found} of results){
@@ -177,6 +181,6 @@ export default async function handler(req,res){
    assets_checked:completed,warnings:notices
   },{onConflict:'organization_id,month_key'});
   if(saveError)warnings.push('No se pudo guardar la caché: '+saveError.message.slice(0,110));
-  return res.status(200).json({month,imported,cached:false,assets_checked:completed,assets_available:matchedAssets.length,warnings:warnings.slice(0,35),history_note:'Las historias anteriores a las últimas 24 horas no se pueden recuperar desde esta API; el Hub guardará las que detecte en las próximas sincronizaciones.'});
+  return res.status(200).json({month,imported,cached:false,assets_checked:completed,assets_available:matchedAssets.length,warnings:warnings.slice(0,35),history_note:'Facebook: publicaciones programadas disponibles por API según permisos. Instagram: las programaciones nativas de Business Suite no se pueden listar mediante la API pública; solo las programadas dentro del Hub aparecen automáticamente.'});
  }catch(e){return res.status(500).json({error:'Error al leer el historial de Meta: '+String(e.message||e).slice(0,180)})}
 }
