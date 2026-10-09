@@ -45,6 +45,12 @@ export default async function handler(req,res){
   if(exactExpected!==exactActual)throw Error('Instagram devolvió @'+exactActual+' pero seleccionaste @'+exactExpected+'. No se vinculó ninguna cuenta.');
   if(!['BUSINESS','MEDIA_CREATOR','CREATOR'].includes(String(profile.account_type||'').toUpperCase()))
    throw Error('Instagram Login requiere una cuenta profesional Business o Creator');
+  // Verify actual publishing authorization without creating or publishing any content.
+  // The consent screen alone does not guarantee that the content-publish grant is usable.
+  const limitRes=await fetch(IG_GRAPH+'/'+encodeURIComponent(String(profile.id))+'/content_publishing_limit?fields=quota_usage',{
+   headers:{Authorization:'Bearer '+long.access_token}});
+  const limit=await limitRes.json();
+  if(!limitRes.ok||limit.error)throw Error('Instagram Login no concedió acceso efectivo a publicación: '+String(limit.error?.message||'comprobación de permisos fallida').slice(0,115));
   const encrypted=encrypt(long.access_token);
   const row={organization_id:record.organization_id,asset_id:asset.id,instagram_scoped_id:String(profile.id),
    username:exactActual,token_ciphertext:encrypted.token_ciphertext,token_iv:encrypted.token_iv,
