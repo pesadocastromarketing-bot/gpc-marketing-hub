@@ -316,12 +316,18 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
     </div>}
     <small className="hub-destination-note">El HUB guardará el ID exacto de Meta de cada destino, no solo el nombre del concesionario.</small>
    </div>
-   <div className="hub-composer-heading"><h3>3. Elegí todas las fechas</h3><span>Hora de Argentina (UTC−3)</span></div>
-   <div className="hub-date-controls"><input type="date" min={today} value={manualDate} onChange={e=>setManualDate(e.target.value)}/><button className="secondary" onClick={()=>addDate(manualDate)}>Agregar fecha</button><input type="time" value={time} onChange={e=>setTime(e.target.value)}/></div>
-   <div className="hub-shortcuts"><button onClick={()=>addDate(today)}>Hoy</button><button onClick={()=>addDate(dateOffset(today,1))}>Mañana</button><button onClick={()=>addDate(dateOffset(today,7))}>+7 días</button><button onClick={()=>addDate(dateOffset(today,14))}>+14 días</button><button onClick={()=>repeat(7)}>4 semanas seguidas</button><button onClick={()=>repeat(30)}>4 meses seguidos</button></div>
-   <div className="hub-date-pills">{dates.map(d=><button key={d} onClick={()=>removeDate(d)}>{moneyDate(d)} <span>×</span></button>)}</div>
-   <div className="hub-composer-heading"><h3>4. Guardá todas las publicaciones</h3></div>
-   <div className="hub-check-list"><label><input type="radio" checked={planMode==='draft'} onChange={()=>setPlanMode('draft')}/>Guardar como borrador (NO publica)</label><label><input type="radio" checked={planMode==='pending_authorization'} onChange={()=>setPlanMode('pending_authorization')}/>Crear y programar automáticamente donde Meta lo permita</label></div>
+   <div className="hub-composer-heading"><h3>3. ¿Cuándo querés publicar?</h3><span>Hora de Argentina (UTC−3)</span></div>
+   <div className="hub-check-list">
+    {format==='Historia'&&<label><input type="radio" checked={planMode==='now'} onChange={()=>setPlanMode('now')}/>Publicar ahora (sin fecha ni título)</label>}
+    <label><input type="radio" checked={planMode==='pending_authorization'} onChange={()=>setPlanMode('pending_authorization')}/>Programar para una fecha</label>
+    <label><input type="radio" checked={planMode==='draft'} onChange={()=>setPlanMode('draft')}/>Guardar borrador (no publica)</label>
+   </div>
+   {planMode==='now'?<p className="hub-calendar-warning">La publicación se coloca en la cola inmediata, procesada aproximadamente cada minuto. La salida real depende de los permisos de Meta; si falta autorización, verás el motivo.</p>:<>
+    <div className="hub-date-controls"><input type="date" min={today} value={manualDate} onChange={e=>setManualDate(e.target.value)}/><button className="secondary" onClick={()=>addDate(manualDate)}>Agregar fecha</button><input type="time" value={time} onChange={e=>setTime(e.target.value)}/></div>
+    <div className="hub-shortcuts"><button onClick={()=>addDate(today)}>Hoy</button><button onClick={()=>addDate(dateOffset(today,1))}>Mañana</button><button onClick={()=>addDate(dateOffset(today,7))}>+7 días</button><button onClick={()=>addDate(dateOffset(today,14))}>+14 días</button><button onClick={()=>repeat(7)}>4 semanas seguidas</button><button onClick={()=>repeat(30)}>4 meses seguidos</button></div>
+    <div className="hub-date-pills">{dates.map(d=><button key={d} onClick={()=>removeDate(d)}>{moneyDate(d)} <span>×</span></button>)}</div>
+   </>}
+   <div className="hub-composer-heading"><h3>4. Confirmá el envío</h3></div>
    <div className="hub-destination-review"><strong>Se va a publicar en:</strong>
     {selectedTargets.length?<ul>{selectedTargets.map(a=><li key={a.id}><strong>{allBrands.find(b=>b.id===a.brand_id)?.name||'Unidad'}</strong> · {destinationLabel(a)}</li>)}</ul>:<p>Seleccioná la cuenta exacta arriba para continuar. No se elegirá ningún perfil por defecto.</p>}
    </div>
