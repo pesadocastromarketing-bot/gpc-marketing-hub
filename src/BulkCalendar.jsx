@@ -28,6 +28,52 @@ function argentinaNow(){
 }
 function moneyDate(s){return new Date(s+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'})}
 
+function parseMetaPlannerCsv(source){
+ const src=String(source||'').replace(/^\uFEFF/,'').trim();
+ if(!src)return {entries:[],errors:[]};
+ const first=src.split(/\r?\n/)[0],delimiter=first.includes('\t')?'\t':first.includes(';')?';':',';
+ const lines=[];let cells=[],cell='',quote=false;
+ for(let i=0;i<src.length;i++){
+  const char=src[i];
+  if(char==='"'){if(quote&&src[i+1]==='"'){cell+='"';i++}else quote=!quote}
+  else if(char===delimiter&&!quote){cells.push(cell);cell=''}
+  else if((char==='\r'||char==='\n')&&!quote){
+   if(char==='\r'&&src[i+1]==='\n')i++;
+   cells.push(cell);if(cells.some(x=>x.trim()))lines.push(cells);cells=[];cell='';
+  }else cell+=char;
+ }
+ cells.push(cell);if(cells.some(x=>x.trim()))lines.push(cells);
+ if(quote)return {entries:[],errors:['El archivo tiene comillas sin cerrar.']};
+ if(lines.length<2)return {entries:[],errors:['Incluí el encabezado y por lo menos una fila.']};
+ const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/[^a-z0-9_]+/g,'_');
+ const header=lines.shift().map(norm),col=(...keys)=>header.findIndex(x=>keys.includes(x));
+ const columns={date:col('fecha','date','dia','scheduled_date'),time:col('hora','time','horario'),
+  account:col('cuenta','perfil','instagram','pagina','account','destino','usuario','id_cuenta'),
+  type:col('tipo','formato','format','publicacion'),description:col('texto','titulo','copy','caption','descripcion','detalle'),
+  reference:col('referencia','reference','identificador')};
+ if(['date','time','account','type'].some(k=>columns[k]<0))
+  return {entries:[],errors:['El encabezado debe incluir fecha;hora;cuenta;tipo (texto es opcional).']};
+ const read=(row,key)=>columns[key]<0?'':String(row[columns[key]]||'').trim();
+ const entries=[],errors=[];
+ lines.forEach((row,i)=>{
+  const raw=read(row,'date'),d=raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](20\d{2})$/);
+  const date=d?d[3]+'-'+d[2].padStart(2,'0')+'-'+d[1].padStart(2,'0'):raw;
+  const rawTime=read(row,'time'),t=rawTime.match(/^(\d{1,2})[:.](\d{2})(?::\d{2})?$/);
+  const time=t?t[1].padStart(2,'0')+':'+t[2]:rawTime;
+  const type=norm(read(row,'type'));
+  const format=type.includes('histor')||type==='story'||type==='stories'?'Historia':
+   type.includes('reel')?'Reel':type.includes('carrusel')||type==='carousel'?'Carrusel':
+   type.includes('video')?'Video':(['imagen','foto','image','feed','post','publicacion'].includes(type)?'Imagen':null);
+  const account=read(row,'account');
+  if(!/^20\d{2}-\d{2}-\d{2}$/.test(date)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)||!account||!format){
+   errors.push('Fila '+(i+2)+': revisá fecha, hora, cuenta y tipo.');return;
+  }
+  entries.push({date,time,account,format,caption:read(row,'description'),reference:read(row,'reference')});
+ });
+ return {entries,errors};
+}
+
+
 export default function BulkCalendar({client,user,organizationId,brandIds,brandFilter,onChangeCount,openSignal=0,onOpenSettings}){
  const allBrands=BUSINESS_UNITS.filter(u=>brandIds[u.id]).map(u=>({code:u.id,id:brandIds[u.id],name:u.name,type:u.type}));
  const [month,setMonth]=useState(new Date(new Date().getFullYear(),new Date().getMonth(),1));
@@ -42,6 +88,10 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
  const [syncingHistory,setSyncingHistory]=useState(false);
  const [historyFeedback,setHistoryFeedback]=useState('');
  const [historyWarnings,setHistoryWarnings]=useState([]);
+ const [showPlannerImport,setShowPlannerImport]=useState(false);
+ const [plannerRaw,setPlannerRaw]=useState('');
+ const [plannerBusy,setPlannerBusy]=useState(false);
+ const [plannerMessage,setPlannerMessage]=useState('');
  const syncedMonths=useRef(new Map());
  const monthSnapshots=useRef(new Map());
  const activeMonth=useRef('');
@@ -119,12 +169,32 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   });
   return()=>{active=false};
  },[month,items]);
+ const parsedPlanner=useMemo(()=>parseMetaPlannerCsv(plannerRaw),[plannerRaw]);
+ const resolvedPlanner=useMemo(()=>{
+  const errors=[...parsedPlanner.errors];
+  const entries=parsedPlanner.entries.map((item,i)=>{
+   const lookup=item.account.toLowerCase().replace(/^@/,'');
+   const choices=socialAssets.filter(a=>
+    String(a.external_id||'').toLowerCase()===lookup||
+    String(a.name||'').toLowerCase().replace(/^@/,'')===lookup);
+   if(choices.length!==1){errors.push('Fila '+(i+2)+': cuenta '+item.account+' no encontrada o ambigua. Usá el ID de Meta.');return null}
+   return {...item,asset_id:choices[0].id,account_name:destinationName(choices[0])};
+  }).filter(Boolean);
+  return {entries,errors};
+ },[parsedPlanner,socialAssets]);
  const visible=items.filter(p=>(brandFilter==='all'||p.brand_id===brandIds[brandFilter]));
  const inMonth=visible.filter(p=>p.scheduled_date?.startsWith(monthKey));
  const publishedJobIds=new Set(jobs.filter(j=>j.status==='published'&&j.external_post_id).map(j=>String(j.meta_asset_id||'')+':'+String(j.external_post_id)));
+ // Hide imported references after Meta exposes the actual publication at that time.
+ const actualMeta=externalPosts.filter(p=>!p.external_id?.startsWith('planner:'));
+ const officialMatch=p=>actualMeta.some(x=>x.meta_asset_id===p.meta_asset_id&&
+  x.local_date===p.local_date&&x.format===p.format&&
+  Math.abs((Number(x.local_time?.slice(0,2))*60+Number(x.local_time?.slice(3,5)))-
+   (Number(p.local_time?.slice(0,2))*60+Number(p.local_time?.slice(3,5))))<=5);
  const shownExternal=externalPosts.filter(p=>p.local_date?.startsWith(monthKey)&&
   (brandFilter==='all'||socialAssets.find(a=>a.id===p.meta_asset_id)?.brand_id===brandIds[brandFilter])&&
-  !publishedJobIds.has(p.meta_asset_id+':'+p.external_id));
+  !publishedJobIds.has(p.meta_asset_id+':'+p.external_id)&&
+  !(p.external_id?.startsWith('planner:')&&officialMatch(p)));
  const localShown=filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth;
  const remoteShown=filterDay?shownExternal.filter(x=>x.local_date===filterDay):shownExternal;
  const dateMap=useMemo(()=>{
@@ -340,6 +410,46 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   }catch(e){setMessage('No se pudieron programar: '+e.message)}
   finally{setSaving(false)}
  }
+ async function importExistingPlanner(){
+  const entries=resolvedPlanner.entries;
+  if(!entries.length||resolvedPlanner.errors.length||entries.length>1000){
+   setPlannerMessage('Revisá las filas antes de importar (máximo 1000).');return;
+  }
+  if(!window.confirm('Importar '+entries.length+' contenidos YA programados en Meta como referencias de solo lectura.\nNO se enviarán ni programarán nuevamente desde el Hub. ¿Continuar?'))return;
+  setPlannerBusy(true);setPlannerMessage('Importando referencias, sin publicar...');
+  try{
+   const {data:{session}}=await client.auth.getSession();
+   if(!session?.access_token)throw Error('Iniciá sesión de nuevo');
+   let total=0;
+   for(let i=0;i<entries.length;i+=100){
+    const batch=entries.slice(i,i+100).map(({asset_id,date,time,format,caption,reference})=>({asset_id,date,time,format,caption,reference}));
+    const response=await fetch('/api/social/planner-import',{method:'POST',headers:{
+     Authorization:'Bearer '+session.access_token,'Content-Type':'application/json'
+    },body:JSON.stringify({entries:batch})});
+    const data=await response.json();
+    if(!response.ok)throw Error(data.error||'Error al importar');
+    total+=data.imported||0;
+   }
+   setPlannerMessage(total+' referencias agregadas. No se publicó ninguna.');
+   setPlannerRaw('');
+   const first=entries[0].date;setMonth(new Date(Number(first.slice(0,4)),Number(first.slice(5,7))-1,1));
+   await loadMetaHistory(first.slice(0,7),true);
+  }catch(e){setPlannerMessage('No se completó la importación: '+e.message)}
+  finally{setPlannerBusy(false)}
+ }
+ async function removePlannerReference(post){
+  if(!post.external_id?.startsWith('planner:'))return;
+  if(!window.confirm('Quitar esta referencia del calendario? La programación de Meta no cambiará.'))return;
+  try{
+   const {data:{session}}=await client.auth.getSession();
+   const response=await fetch('/api/social/planner-import',{method:'DELETE',
+    headers:{Authorization:'Bearer '+session?.access_token,'Content-Type':'application/json'},
+    body:JSON.stringify({id:post.id})});
+   const data=await response.json();if(!response.ok)throw Error(data.error||'Error al quitar');
+   setPlannerMessage('Referencia quitada del Hub, sin modificar Meta.');
+   await loadMetaHistory(monthKey,true);
+  }catch(e){setPlannerMessage('No se pudo quitar: '+e.message)}
+ }
  async function removeSelected(){
   if(!selectedRows.length||!window.confirm('¿Eliminar '+selectedRows.length+' borradores seleccionados del calendario? Los archivos originales permanecerán guardados.'))return;
   const {error}=await client.from('hub_content').delete().eq('organization_id',organizationId).in('id',selectedRows);
@@ -360,9 +470,32 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    <button className="primary" onClick={()=>setShowComposer(v=>!v)}><Plus size={16}/> {showComposer?'Cerrar editor':'Crear lote de publicaciones'}</button>
   </section>
   {message&&<p className="hub-cal-notice" role="status">{message}</p>}
-  <div className="hub-meta-history-bar"><div><strong>Publicaciones de Meta</strong><small>{syncingHistory?'Sincronizando cuentas...':historyFeedback||'Publicado en Facebook e Instagram, y programación futura de Facebook cuando Meta concede acceso.'}</small></div><button className="secondary" disabled={syncingHistory} onClick={()=>syncMetaHistory(monthKey,true)}><RefreshCw size={15} className={syncingHistory?'mh-spin':''}/> {syncingHistory?'Sincronizando...':'Sincronizar desde Meta'}</button></div>
+  <div className="hub-meta-history-bar"><div><strong>Publicaciones de Meta</strong><small>{syncingHistory?'Sincronizando cuentas...':historyFeedback||'Publicado en Facebook e Instagram, y programación futura de Facebook cuando Meta concede acceso.'}</small></div><button className="secondary" disabled={syncingHistory} onClick={()=>syncMetaHistory(monthKey,true)}><RefreshCw size={15} className={syncingHistory?'mh-spin':''}/> {syncingHistory?'Sincronizando...':'Sincronizar desde Meta'}</button><button type="button" className="secondary" onClick={()=>setShowPlannerImport(x=>!x)}><CalendarDays size={15}/>{showPlannerImport?'Cerrar importación':'Importar agenda existente'}</button></div>
   {historyWarnings.length>0&&<details className="hub-meta-history-warnings"><summary>Ver {historyWarnings.length} aviso(s) de sincronización</summary>{historyWarnings.map((w,i)=><p key={i}>{w}</p>)}</details>}
   <p className="hub-meta-history-note">El contenido importado de Meta es de solo lectura. Las publicaciones futuras de Facebook se consultan cuando la API las permite. Las publicaciones, reels e historias programadas directamente en el <a href="https://business.facebook.com/latest/content_calendar" target="_blank" rel="noopener noreferrer">Planificador de Meta</a> para Instagram no están disponibles para importación completa mediante la API pública: no aparecerán aquí hasta publicarse. Las programadas desde GPC Hub sí aparecen con su fecha futura. Las historias ya expiradas tampoco son recuperables retroactivamente.</p>
+  {showPlannerImport&&<section className="hub-planner-import">
+   <h3>Importar historias y publicaciones que ya programaste en Meta</h3>
+   <p>Meta no ofrece por API el calendario futuro completo de Instagram. Este importador incorpora tus contenidos existentes como <strong>referencias de solo lectura</strong>; el Hub no los volverá a publicar.</p>
+   <p>Podés pegar una tabla de Excel/Sheets o cargar un CSV. Columnas: <strong>fecha;hora;cuenta;tipo;texto</strong>. Formatos admitidos: Historia, Reel, Imagen, Carrusel o Video. Usá el @usuario o ID exacto de Instagram/Facebook. Fecha dd/mm/aaaa y horario argentino.</p>
+   <div className="hub-planner-import-actions">
+    <label className="secondary">Elegir CSV / TXT
+     <input type="file" accept=".csv,.tsv,.txt,text/csv,text/plain" onChange={async e=>{
+      const file=e.target.files?.[0];e.target.value='';if(!file)return;
+      if(file.size>1024*1024){setPlannerMessage('El archivo supera 1 MB');return}
+      setPlannerRaw(await file.text());setPlannerMessage('');
+     }}/>
+    </label>
+    <button type="button" className="secondary" onClick={()=>{setPlannerRaw('fecha;hora;cuenta;tipo;texto\n15/10/2026;10:00;@renault.circular;Historia;Campaña de octubre');setPlannerMessage('')}}>Ver ejemplo editable</button>
+   </div>
+   <textarea aria-label="Agenda de Meta en CSV" rows={6} value={plannerRaw} onChange={e=>{setPlannerRaw(e.target.value);setPlannerMessage('')}} placeholder={'fecha;hora;cuenta;tipo;texto\n15/10/2026;10:00;@renault.circular;Historia;Campaña octubre'}/>
+   <div className="hub-planner-import-result">
+    <strong>{resolvedPlanner.entries.length} contenidos listos para registrar</strong>
+    {resolvedPlanner.errors.length>0&&<div className="hub-planner-import-errors">{resolvedPlanner.errors.slice(0,12).map((e,i)=><small key={i}>{e}</small>)}</div>}
+    {resolvedPlanner.entries.slice(0,5).map((p,i)=><small key={i}>{p.date} · {p.time} · {p.account_name} · {p.format} · {p.caption.slice(0,40)}</small>)}
+    <button type="button" className="primary" disabled={plannerBusy||!resolvedPlanner.entries.length||resolvedPlanner.entries.length>1000||resolvedPlanner.errors.length>0} onClick={importExistingPlanner}>{plannerBusy?'Registrando...':'Registrar '+resolvedPlanner.entries.length+' referencias sin publicar'}</button>
+   </div>
+   {plannerMessage&&<p className="hub-cal-notice" role="status">{plannerMessage}</p>}
+  </section>}
   {showComposer&&<section className="hub-composer">
    <div className="hub-composer-heading"><h3>1. Subí la creatividad una sola vez</h3><span>Biblioteca privada de Supabase</span></div>
    <label className="hub-upload"><UploadCloud size={23}/><strong>{uploading?'Subiendo archivos...':'Elegir imágenes o videos'}</strong><span>JPG, PNG, WebP, MP4 o MOV · hasta 50 MB cada uno · 10 archivos</span><input disabled={uploading||saving} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" multiple onChange={e=>{uploadFiles(e.target.files);e.target.value=''}}/></label>
@@ -449,8 +582,9 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    const permalink=(()=>{try{const u=new URL(p.permalink_url);return u.protocol==='https:'&&['facebook.com','www.facebook.com','instagram.com','www.instagram.com','m.facebook.com'].includes(u.hostname)?u.href:null}catch{return null}})();
    return <div className="hub-cal-entry hub-external-entry" key={p.id}>
     {p.thumbnail_url?<img src={p.thumbnail_url} alt="" loading="lazy" referrerPolicy="no-referrer"/>:<span className="hub-cal-entry-image"><ImageIcon size={19}/></span>}
-    <div><strong>{p.format} · {asset?.name||p.network}</strong><small>{moneyDate(p.local_date)} · {(p.local_time||'').slice(0,5)} · {p.network} · {p.status==='scheduled'?'Programado en Meta':'Publicado en Meta'}</small><small>{p.caption?.slice(0,150)||'Sin descripción'}</small></div>
+    <div><strong>{p.format} · {asset?.name||p.network}</strong><small>{moneyDate(p.local_date)} · {(p.local_time||'').slice(0,5)} · {p.network} · {p.external_id?.startsWith('planner:')?'Registrado desde Planificador Meta (referencia) · NO publica el Hub':p.status==='scheduled'?'Programado en Meta':'Publicado en Meta'}</small><small>{p.caption?.slice(0,150)||'Sin descripción'}</small></div>
     {permalink&&<a className="secondary hub-meta-post-link" href={permalink} target="_blank" rel="noopener noreferrer">Ver en Meta</a>}
+     {p.external_id?.startsWith('planner:')&&<button type="button" className="secondary" onClick={()=>removePlannerReference(p)}>Quitar referencia</button>}
    </div>;
   })}
   {!loading&&!syncingHistory&&localShown.length+remoteShown.length===0&&<p className="hub-calendar-empty">No se encontraron contenidos accesibles para estas fechas. Si Meta Business Suite muestra publicaciones futuras de Facebook, tocá «Sincronizar desde Meta» y revisá los avisos de acceso. Las programaciones nativas de Instagram en Business Suite no se pueden importar por la API pública.</p>}
