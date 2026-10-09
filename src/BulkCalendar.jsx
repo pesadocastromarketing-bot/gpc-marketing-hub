@@ -268,7 +268,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    {format==='Historia'&&selectedMedia.length>0&&<div className="hub-story-order"><strong>Orden de las historias ({selectedMedia.length})</strong><ol>{selectedMedia.map((path,index)=>{
     const file=media.find(m=>m.storage_path===path);
     return <li key={path}><span>{index+1}. {file?.filename||'Archivo seleccionado'}</span><div><button type="button" className="secondary" disabled={index===0||saving} aria-label={'Subir historia '+(index+1)} onClick={()=>moveStory(path,-1)}>↑</button><button type="button" className="secondary" disabled={index===selectedMedia.length-1||saving} aria-label={'Bajar historia '+(index+1)} onClick={()=>moveStory(path,1)}>↓</button><button type="button" className="secondary" disabled={saving} aria-label={'Quitar historia '+(index+1)} onClick={()=>setSelectedMedia(current=>current.filter(p=>p!==path))}>×</button></div></li>;
-   })}</ol></div>
+   })}</ol></div>}
    <label className="hub-wide-label">Copy de la publicación<textarea rows="3" placeholder="Texto que se reutilizará en todas las fechas y cuentas..." value={copy} onChange={e=>setCopy(e.target.value)}/></label>
    <div className="hub-composer-heading"><h3>2. Elegí los concesionarios y cada cuenta exacta</h3><span>Oficiales y paralelas, siempre por separado</span></div>
    <div className="hub-business-units">
