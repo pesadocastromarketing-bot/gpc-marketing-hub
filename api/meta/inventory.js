@@ -104,10 +104,9 @@ export default async function handler(req,res){
   if(socialTokenError)throw socialTokenError;
   const adsConns=(adsTokens||[]).filter(x=>x.organization_id===org&&(!x.expires_at||Date.parse(x.expires_at)>Date.now()));
   const socialConns=(socialTokens||[]).filter(x=>x.organization_id===org&&(!x.expires_at||Date.parse(x.expires_at)>Date.now()));
-  const {data:directConns,error:directErr}=await db.schema('hub_private').from('instagram_direct_connections')
-    .select('asset_id,expires_at').eq('organization_id',org);
+  const {data:directConns,error:directErr}=await db.rpc('hub_ig_direct_tokens');
   if(directErr)throw directErr;
-  const directReady=asset=>(directConns||[]).some(c=>c.asset_id===asset.id&&Date.parse(c.expires_at)>Date.now());
+  const directReady=asset=>(directConns||[]).some(c=>c.organization_id===org&&c.asset_id===asset.id&&Date.parse(c.expires_at)>Date.now());
   const igReady=(asset)=>socialConns.some(c=>c.meta_user_id===asset.metadata?.meta_user_id&&
     (c.scopes||[]).includes('instagram_basic')&&(c.scopes||[]).includes('instagram_content_publish'));
   const found=new Map(),persisted=[];
