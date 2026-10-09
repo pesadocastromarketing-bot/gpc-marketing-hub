@@ -28,6 +28,52 @@ function argentinaNow(){
 }
 function moneyDate(s){return new Date(s+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'})}
 
+function parseMetaPlannerCsv(source){
+ const src=String(source||'').replace(/^\uFEFF/,'').trim();
+ if(!src)return {entries:[],errors:[]};
+ const first=src.split(/\r?\n/)[0],delimiter=first.includes('\t')?'\t':first.includes(';')?';':',';
+ const lines=[];let cells=[],cell='',quote=false;
+ for(let i=0;i<src.length;i++){
+  const char=src[i];
+  if(char==='"'){if(quote&&src[i+1]==='"'){cell+='"';i++}else quote=!quote}
+  else if(char===delimiter&&!quote){cells.push(cell);cell=''}
+  else if((char==='\r'||char==='\n')&&!quote){
+   if(char==='\r'&&src[i+1]==='\n')i++;
+   cells.push(cell);if(cells.some(x=>x.trim()))lines.push(cells);cells=[];cell='';
+  }else cell+=char;
+ }
+ cells.push(cell);if(cells.some(x=>x.trim()))lines.push(cells);
+ if(quote)return {entries:[],errors:['El archivo tiene comillas sin cerrar.']};
+ if(lines.length<2)return {entries:[],errors:['Incluí el encabezado y por lo menos una fila.']};
+ const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/[^a-z0-9_]+/g,'_');
+ const header=lines.shift().map(norm),col=(...keys)=>header.findIndex(x=>keys.includes(x));
+ const columns={date:col('fecha','date','dia','scheduled_date'),time:col('hora','time','horario'),
+  account:col('cuenta','perfil','instagram','pagina','account','destino','usuario','id_cuenta'),
+  type:col('tipo','formato','format','publicacion'),description:col('texto','titulo','copy','caption','descripcion','detalle'),
+  reference:col('referencia','reference','identificador')};
+ if(['date','time','account','type'].some(k=>columns[k]<0))
+  return {entries:[],errors:['El encabezado debe incluir fecha;hora;cuenta;tipo (texto es opcional).']};
+ const read=(row,key)=>columns[key]<0?'':String(row[columns[key]]||'').trim();
+ const entries=[],errors=[];
+ lines.forEach((row,i)=>{
+  const raw=read(row,'date'),d=raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](20\d{2})$/);
+  const date=d?d[3]+'-'+d[2].padStart(2,'0')+'-'+d[1].padStart(2,'0'):raw;
+  const rawTime=read(row,'time'),t=rawTime.match(/^(\d{1,2})[:.](\d{2})(?::\d{2})?$/);
+  const time=t?t[1].padStart(2,'0')+':'+t[2]:rawTime;
+  const type=norm(read(row,'type'));
+  const format=type.includes('histor')||type==='story'||type==='stories'?'Historia':
+   type.includes('reel')?'Reel':type.includes('carrusel')||type==='carousel'?'Carrusel':
+   type.includes('video')?'Video':(['imagen','foto','image','feed','post','publicacion'].includes(type)?'Imagen':null);
+  const account=read(row,'account');
+  if(!/^20\d{2}-\d{2}-\d{2}$/.test(date)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)||!account||!format){
+   errors.push('Fila '+(i+2)+': revisá fecha, hora, cuenta y tipo.');return;
+  }
+  entries.push({date,time,account,format,caption:read(row,'description'),reference:read(row,'reference')});
+ });
+ return {entries,errors};
+}
+
+
 export default function BulkCalendar({client,user,organizationId,brandIds,brandFilter,onChangeCount,openSignal=0,onOpenSettings}){
  const allBrands=BUSINESS_UNITS.filter(u=>brandIds[u.id]).map(u=>({code:u.id,id:brandIds[u.id],name:u.name,type:u.type}));
  const [month,setMonth]=useState(new Date(new Date().getFullYear(),new Date().getMonth(),1));
@@ -42,6 +88,10 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
  const [syncingHistory,setSyncingHistory]=useState(false);
  const [historyFeedback,setHistoryFeedback]=useState('');
  const [historyWarnings,setHistoryWarnings]=useState([]);
+ const [showPlannerImport,setShowPlannerImport]=useState(false);
+ const [plannerRaw,setPlannerRaw]=useState('');
+ const [plannerBusy,setPlannerBusy]=useState(false);
+ const [plannerMessage,setPlannerMessage]=useState('');
  const syncedMonths=useRef(new Map());
  const monthSnapshots=useRef(new Map());
  const activeMonth=useRef('');
@@ -119,6 +169,19 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   });
   return()=>{active=false};
  },[month,items]);
+ const parsedPlanner=useMemo(()=>parseMetaPlannerCsv(plannerRaw),[plannerRaw]);
+ const resolvedPlanner=useMemo(()=>{
+  const errors=[...parsedPlanner.errors];
+  const entries=parsedPlanner.entries.map((item,i)=>{
+   const lookup=item.account.toLowerCase().replace(/^@/,'');
+   const choices=socialAssets.filter(a=>
+    String(a.external_id||'').toLowerCase()===lookup||
+    String(a.name||'').toLowerCase().replace(/^@/,'')===lookup);
+   if(choices.length!==1){errors.push('Fila '+(i+2)+': cuenta '+item.account+' no encontrada o ambigua. Usá el ID de Meta.');return null}
+   return {...item,asset_id:choices[0].id,account_name:destinationName(choices[0])};
+  }).filter(Boolean);
+  return {entries,errors};
+ },[parsedPlanner,socialAssets]);
  const visible=items.filter(p=>(brandFilter==='all'||p.brand_id===brandIds[brandFilter]));
  const inMonth=visible.filter(p=>p.scheduled_date?.startsWith(monthKey));
  const publishedJobIds=new Set(jobs.filter(j=>j.status==='published'&&j.external_post_id).map(j=>String(j.meta_asset_id||'')+':'+String(j.external_post_id)));
@@ -339,6 +402,46 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    await refresh();
   }catch(e){setMessage('No se pudieron programar: '+e.message)}
   finally{setSaving(false)}
+ }
+ async function importExistingPlanner(){
+  const entries=resolvedPlanner.entries;
+  if(!entries.length||resolvedPlanner.errors.length||entries.length>1000){
+   setPlannerMessage('Revisá las filas antes de importar (máximo 1000).');return;
+  }
+  if(!window.confirm('Importar '+entries.length+' contenidos YA programados en Meta como referencias de solo lectura.\nNO se enviarán ni programarán nuevamente desde el Hub. ¿Continuar?'))return;
+  setPlannerBusy(true);setPlannerMessage('Importando referencias, sin publicar...');
+  try{
+   const {data:{session}}=await client.auth.getSession();
+   if(!session?.access_token)throw Error('Iniciá sesión de nuevo');
+   let total=0;
+   for(let i=0;i<entries.length;i+=100){
+    const batch=entries.slice(i,i+100).map(({asset_id,date,time,format,caption,reference})=>({asset_id,date,time,format,caption,reference}));
+    const response=await fetch('/api/social/planner-import',{method:'POST',headers:{
+     Authorization:'Bearer '+session.access_token,'Content-Type':'application/json'
+    },body:JSON.stringify({entries:batch})});
+    const data=await response.json();
+    if(!response.ok)throw Error(data.error||'Error al importar');
+    total+=data.imported||0;
+   }
+   setPlannerMessage(total+' referencias agregadas. No se publicó ninguna.');
+   setPlannerRaw('');
+   const first=entries[0].date;setMonth(new Date(Number(first.slice(0,4)),Number(first.slice(5,7))-1,1));
+   await loadMetaHistory(first.slice(0,7),true);
+  }catch(e){setPlannerMessage('No se completó la importación: '+e.message)}
+  finally{setPlannerBusy(false)}
+ }
+ async function removePlannerReference(post){
+  if(!post.external_id?.startsWith('planner:'))return;
+  if(!window.confirm('Quitar esta referencia del calendario? La programación de Meta no cambiará.'))return;
+  try{
+   const {data:{session}}=await client.auth.getSession();
+   const response=await fetch('/api/social/planner-import',{method:'DELETE',
+    headers:{Authorization:'Bearer '+session?.access_token,'Content-Type':'application/json'},
+    body:JSON.stringify({id:post.id})});
+   const data=await response.json();if(!response.ok)throw Error(data.error||'Error al quitar');
+   setPlannerMessage('Referencia quitada del Hub, sin modificar Meta.');
+   await loadMetaHistory(monthKey,true);
+  }catch(e){setPlannerMessage('No se pudo quitar: '+e.message)}
  }
  async function removeSelected(){
   if(!selectedRows.length||!window.confirm('¿Eliminar '+selectedRows.length+' borradores seleccionados del calendario? Los archivos originales permanecerán guardados.'))return;
