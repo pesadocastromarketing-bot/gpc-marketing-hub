@@ -327,3 +327,163 @@
 .hub-business-units>div>strong{font-size:12px;color:#506587}
 .hub-business-units .hub-check-list{gap:8px}
 .hub-business-units .hub-check-list label{background:#fff}
+
+/* Mobile-first use of the existing Marketing Hub without changing Meta or publishing state. */
+.mobile-nav-toggle,.mobile-nav-close,.mobile-nav-backdrop{display:none}
+@media(max-width:900px){
+  .app{width:100%;min-width:0}
+  .app>main{width:100%;min-width:0}
+  .sidebar{position:fixed;inset:0 auto 0 0;width:min(84vw,300px);height:100dvh;padding:24px 14px;background:#101a30;overflow-y:auto;overscroll-behavior:contain;z-index:201;transform:translateX(-105%);visibility:hidden;pointer-events:none;box-shadow:12px 0 42px #080f2450;transition:transform .22s ease,visibility .22s}
+  .sidebar.is-open{transform:translateX(0);visibility:visible;pointer-events:auto}
+  .sidebar .logo{padding:2px 40px 26px 14px}
+  .sidebar .logo>span:nth-child(2){font-size:21px}
+  .sidebar .workspace{font-size:10px;display:block;padding:10px 14px 24px}
+  .sidebar .nav button,.sidebar .nav button:not(.active){justify-content:flex-start;gap:13px;padding:13px 14px;font-size:14px!important;min-height:46px}
+  .sidebar .nav button small{display:block}
+  .sidebar .sidebarFoot{justify-content:flex-start}
+  .sidebar .sidebarFoot>div:not(.avatar){display:block}
+  .mobile-nav-toggle,.mobile-nav-close{display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;height:44px;border:0;border-radius:10px}
+  .mobile-nav-toggle{background:#eff3ff;color:#284879}
+  .mobile-nav-close{position:absolute;right:12px;top:17px;background:#263755;color:#fff}
+  .mobile-nav-backdrop{display:block;position:fixed;inset:0;z-index:200;border:0;padding:0;background:#07122db8;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .22s ease,visibility .22s}
+  .mobile-nav-backdrop.is-visible{opacity:1;visibility:visible;pointer-events:auto}
+  .app header{min-height:66px;height:auto;gap:10px;padding:10px 16px;flex-wrap:wrap}
+  .app header .crumb{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:0}
+  .app header .crumb span{display:none}
+  .app header .crumb strong{font-size:15px;letter-spacing:-.2px}
+  .app header .headActions{min-width:0;gap:10px;max-width:100%}
+  .app header .headActions select{max-width:min(55vw,270px);min-width:0;min-height:44px;text-overflow:ellipsis}
+  .content{max-width:100%;padding:22px 18px 60px}
+  .pageTitle{flex-wrap:wrap;align-items:flex-start}
+  .pageTitle>div{flex:1;min-width:220px}
+  .pageTitle>.primary{font-size:12px;padding:11px 15px;min-height:44px}
+  .panelhead{gap:12px;flex-wrap:wrap;padding:16px}
+  .panelhead button{min-height:40px}
+  .hub-calendar,.gpc-meta-wizard,.hub-composer,.hub-calendar-top,.hub-calendar-view,.hub-calendar-entries,.gpc-wizard-intro,.gpc-wizard-accounts,.gpc-wizard-permissions{min-width:0;max-width:100%}
+  .hub-cal-entry>div,.hub-calendar-top>div,.gpc-wizard-head>div,.gpc-wizard-section-top>div,.hub-composer-heading>h3{min-width:0;overflow-wrap:anywhere}
+  .gpc-wizard-search{min-width:0}
+  .gpc-account-picker{min-width:0;max-width:100%}
+}
+@media(max-width:700px){
+  .content{padding:18px 12px 54px}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .stat{min-width:0;padding:14px}
+  .stat>div,.stat small{overflow-wrap:anywhere}
+  .two{grid-template-columns:minmax(0,1fr)}
+  .panel{min-width:0}
+  .postLine{margin:0 15px;gap:8px;flex-wrap:wrap}
+  .postLine>div{min-width:0;flex:1}
+  .postLine .muted{white-space:nowrap}
+  .warning{align-items:flex-start;line-height:1.5}
+  .pageTitle{margin-bottom:19px}
+  .pageTitle h1{font-size:24px;line-height:1.14}
+  .pageTitle p{line-height:1.5}
+  .pageTitle>.primary{width:100%;font-size:13px;justify-content:center}
+  .pageTitle>.primary svg{width:18px}
+  .hub-calendar-top{padding:15px}
+  .hub-calendar-top .primary,.hub-submit .primary{min-height:46px}
+  .hub-composer{padding:13px;gap:15px}
+  .hub-composer-two{grid-template-columns:minmax(0,1fr)}
+  .hub-composer-heading{align-items:start;flex-wrap:wrap}
+  .hub-composer-heading span{line-height:1.4}
+  .hub-upload{padding:20px 10px}
+  .hub-check-list label,.hub-destination-option{min-height:44px}
+  .hub-date-controls{display:flex;flex-direction:column;align-items:stretch}
+  .hub-date-controls input,.hub-date-controls input[type=date],.hub-date-controls input[type=time],.hub-date-controls button{width:100%;max-width:none;min-height:44px}
+  .hub-shortcuts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hub-shortcuts button{min-height:44px;white-space:normal}
+  .hub-calendar-month{padding:13px 10px;gap:8px}
+  .hub-calendar-month strong{min-width:0;flex:1;font-size:13px}
+  .hub-calendar-month>button:not(.secondary){width:42px;height:42px;flex:0 0 42px}
+  .hub-calendar-month span{margin-left:0}
+  .hub-calendar-month button.secondary{min-height:40px}
+  .hub-calendar-days span{padding:9px 0;font-size:10px}
+  .hub-cal-cell{min-height:57px;padding:7px 2px;align-items:center;justify-content:flex-start;gap:4px}
+  .hub-cal-cell>strong{font-size:12px}
+  .hub-cal-cell>span{display:grid;place-items:center;min-width:20px;height:18px;padding:0 3px;max-width:95%;font-size:0!important;line-height:1;border-radius:6px}
+  .hub-cal-cell>span:after{content:attr(data-count);font-size:10px;font-weight:750}
+  .hub-cal-cell>small{display:none}
+  .hub-cal-listhead{padding:13px;gap:9px}
+  .hub-cal-listhead h3{flex-basis:100%;font-size:13px}
+  .hub-cal-listhead button{margin-left:0;min-height:40px}
+  .hub-cal-entry{display:grid;grid-template-columns:24px 48px minmax(0,1fr);align-items:start;padding:12px;gap:9px}
+  .hub-cal-entry>input{width:18px;height:18px;align-self:center}
+  .hub-cal-entry>img,.hub-cal-entry-image{width:48px;height:48px;min-width:0;flex:none}
+  .hub-cal-entry>div{grid-column:3;line-height:1.45}
+  .hub-cal-entry button.secondary{grid-column:2/-1;justify-self:end;font-size:12px;min-height:40px}
+  .hub-cal-entry button.secondary svg{width:16px}
+  .hub-ads-filterbar,.hub-ads-bulk-toolbar{padding:12px;gap:10px}
+  .hub-ads-filterbar input,.hub-ads-filterbar select{width:100%;min-width:0;max-width:none;flex:1 1 100%;min-height:44px}
+  .hub-ads-bulk-toolbar>div{flex-basis:100%}
+  .hub-social-body{padding:14px}
+  .hub-social-row{gap:10px}
+  .hub-social-actions{width:100%}
+  .hub-destination-picker,.hub-destination-unit{padding:12px}
+  .hub-destination-options{grid-template-columns:minmax(0,1fr)}
+  .hub-destination-option b,.hub-destination-option small{overflow-wrap:anywhere}
+  .gpc-wizard-intro,.gpc-wizard-permissions,.gpc-wizard-accounts{padding:14px}
+  .gpc-wizard-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+  .gpc-wizard-stats>div{min-width:0;padding:9px;gap:6px}
+  .gpc-wizard-stats strong{font-size:23px}
+  .gpc-wizard-stats span{font-size:10px;overflow-wrap:anywhere}
+  .gpc-wizard-stats small{font-size:9px;overflow-wrap:anywhere}
+  .gpc-wizard-tools{align-items:stretch;flex-direction:column}
+  .gpc-wizard-tools button{min-height:44px}
+  .gpc-wizard-search{margin:0;width:100%}
+  .gpc-wizard-permission-row{flex-direction:column;align-items:stretch}
+  .gpc-wizard-permission-row button{width:100%;min-height:44px;justify-content:center}
+  .gpc-wizard-asset{flex-wrap:wrap;gap:10px}
+  .gpc-wizard-asset-detail{flex:1 1 calc(100% - 50px);min-width:0}
+  .gpc-wizard-asset select{flex:1 1 100%;max-width:none;min-width:0;margin:0;width:100%;min-height:44px}
+  .gpc-wizard-group-title{min-height:48px}
+  .gpc-wizard-group-title strong{min-width:0;overflow-wrap:anywhere}
+  .fieldRow{grid-template-columns:1fr}
+  .channels{flex-wrap:wrap}
+  .modalOverlay{padding:10px;align-items:end}
+  .modal{border-radius:16px 16px 0 0;max-height:calc(100dvh - 16px);padding:18px 15px max(18px,env(safe-area-inset-bottom))}
+  .modalFoot{flex-wrap:wrap}
+  .modalFoot button{flex:1;min-height:44px}
+  .toast{left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));text-align:center}
+  input,select,textarea{font-size:16px}
+  .hub-composer input,.hub-composer select,.hub-composer textarea{font-size:16px}
+  button,a,label{touch-action:manipulation}
+  /* Campaign metrics become readable cards instead of a wide sideways table. */
+  .tableWrap{overflow:visible}
+  .tableWrap table,.tableWrap tbody{display:block;width:100%}
+  .tableWrap thead{display:none}
+  .tableWrap tbody{padding:0 10px}
+  .tableWrap tbody tr{display:block;position:relative;margin:0 0 12px;padding:10px 6px;border:1px solid #e1e8f2;border-radius:12px;background:white;box-shadow:0 2px 10px #20304c0a}
+  .tableWrap tbody td{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;border:0;padding:6px 12px;white-space:normal;min-width:0;overflow-wrap:anywhere;font-size:12px}
+  .tableWrap tbody td:before{font-size:11px;font-weight:750;color:#7b8aa2;flex:0 0 40%}
+  .tableWrap tbody td:nth-child(1){position:absolute;top:11px;right:10px;padding:5px}
+  .tableWrap tbody td:nth-child(1):before{display:none}
+  .tableWrap tbody td:nth-child(1) input{width:19px;height:19px}
+  .tableWrap tbody td:nth-child(2){padding-right:46px;padding-bottom:12px;border-bottom:1px solid #e9edf5;margin-bottom:8px}
+  .tableWrap tbody td:nth-child(2) .mh-campaign-link{max-width:100%;white-space:normal;text-align:left;font-size:13px}
+  .tableWrap tbody td:nth-child(3):before{content:"Estado"}
+  .tableWrap tbody td:nth-child(4):before{content:"Objetivo"}
+  .tableWrap tbody td:nth-child(5):before{content:"Inversión 30 días"}
+  .tableWrap tbody td:nth-child(6):before{content:"Impresiones"}
+  .tableWrap tbody td:nth-child(7):before{content:"Clics"}
+  .tableWrap tbody td:nth-child(8):before{content:"Leads"}
+  .tableWrap tbody td:nth-child(9):before{content:"CPL"}
+  .tableWrap tbody td:nth-child(10):before{content:"ID"}
+  .mh-panel{margin:12px}
+  .mh-head{padding:13px;flex-wrap:wrap}
+  .mh-item{flex-wrap:wrap;padding:12px;gap:10px}
+  .mh-item button.secondary{min-height:44px}
+}
+@media(max-width:390px){
+  .app header{padding:9px 10px;gap:7px}
+  .app header .headActions{flex:0 0 100%;justify-content:flex-end}
+  .app header .headActions select{max-width:100%;width:100%}
+  .app header .headActions .avatar{display:none}
+  .content{padding:15px 9px 45px}
+  .gpc-wizard-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .gpc-wizard-stats>div{padding:7px}
+  .gpc-wizard-stats span{font-size:9px}
+  .gpc-wizard-stats small{font-size:8px}
+}
+@media(prefers-reduced-motion:reduce){
+ .sidebar,.mobile-nav-backdrop{transition:none!important}
+}
