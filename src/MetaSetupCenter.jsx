@@ -8,6 +8,8 @@ export default function MetaSetupCenter({client}){
  const[busy,setBusy]=useState(false),[authorizing,setAuthorizing]=useState(false),[message,setMessage]=useState(''),[warnings,setWarnings]=useState([]);
  const[assignments,setAssignments]=useState({}),[filter,setFilter]=useState(''),[expanded,setExpanded]=useState({ad_account:false,page:true,instagram_account:true}),[showAll,setShowAll]=useState(false);
  const [scopeMessage,setScopeMessage]=useState('');
+ const [igDiagnostics,setIgDiagnostics]=useState({});
+ const [checkingIg,setCheckingIg]=useState('');
  const assigned=useMemo(()=>assets.map(a=>({...a,chosen_brand_id:Object.prototype.hasOwnProperty.call(assignments,a.id)?assignments[a.id]:a.brand_id})),[assets,assignments]);
  const confident=assets.filter(a=>!a.brand_id&&a.suggested_brand_id&&!a.stale);
  const missing=assigned.filter(a=>!a.chosen_brand_id&&!a.stale);
@@ -58,6 +60,22 @@ export default function MetaSetupCenter({client}){
    window.location.assign(json.url);
   }catch(e){setScopeMessage('No se pudo iniciar Meta: '+e.message);setAuthorizing(false)}
  }
+ async function diagnoseInstagram(asset,repair=false){
+  if(repair&&!window.confirm('¿Corregir solamente la conexión de @'+asset.name+' después de verificar su página y permisos con Meta? No cambia otras cuentas.'))return;
+  setCheckingIg(asset.id);
+  setIgDiagnostics(previous=>({...previous,[asset.id]:{loading:true}}));
+  try{
+   const result=await call('/api/meta/diagnose-instagram',{asset_id:asset.id,repair});
+   if(repair){
+    await sync(true);
+    setIgDiagnostics(previous=>({...previous,[asset.id]:{message:result.message,verified:true}}));
+   }else{
+    setIgDiagnostics(previous=>({...previous,[asset.id]:result}));
+   }
+  }catch(e){
+   setIgDiagnostics(previous=>({...previous,[asset.id]:{message:'No se pudo comprobar: '+e.message}}));
+  }finally{setCheckingIg('')}
+ }
  function row(a){
   const {Icon}=kinds[a.kind];
   return <div className={'gpc-wizard-asset '+(a.stale?'stale':'')} key={a.id}>
@@ -65,7 +83,26 @@ export default function MetaSetupCenter({client}){
     <div className="gpc-wizard-asset-detail"><strong>{a.name}</strong><small>{kinds[a.kind].singular} · ID {a.external_id}{a.currency?' · '+a.currency:''}</small>
       <small>{a.stale?'No aparece en la autorización actual':a.chosen_brand_id?'Vinculada a '+brandName(a.chosen_brand_id):a.suggested_brand_id?'Sugerencia: '+brandName(a.suggested_brand_id):'Vinculación pendiente'}
        {a.kind==='instagram_account'?(a.publish_ready===true?' · Publicación autorizada para esta cuenta':' · No autorizada para publicar desde este Instagram'):a.kind==='page'&&a.publish_ready===true?' · Publicación autorizada':''}
-      </small></div>
+      </small>
+      {a.kind==='instagram_account'&&!a.publish_ready&&
+       <div className="gpc-ig-diagnostics">
+        <button type="button" className="secondary" disabled={Boolean(checkingIg)} onClick={()=>diagnoseInstagram(a)}>
+         {checkingIg===a.id?'Comprobando acceso en Meta...':'Diagnosticar permiso de esta cuenta'}
+        </button>
+        {igDiagnostics[a.id]&&!igDiagnostics[a.id].loading&&<>
+         <small>{igDiagnostics[a.id].message}</small>
+         {igDiagnostics[a.id].diagnostics?.length>0&&<small>
+          Comprobadas {igDiagnostics[a.id].diagnostics.length} conexiones autorizadas.
+          {igDiagnostics[a.id].diagnostics.some(d=>d.page_seen&&!d.create_content)?' Falta autorización para crear contenido en la página.':''}
+          {!igDiagnostics[a.id].diagnostics.some(d=>d.page_seen)?' Meta no incluyó la página en las cuentas accesibles a esas conexiones.':''}
+         </small>}
+         {igDiagnostics[a.id].repair_available&&
+          <button type="button" className="primary" disabled={Boolean(checkingIg)} onClick={()=>diagnoseInstagram(a,true)}>
+           Verificar y corregir asociación
+          </button>}
+        </>}
+       </div>}
+     </div>
     <select disabled={busy} aria-label={'Unidad comercial para '+a.name} value={a.chosen_brand_id||''} onChange={e=>setBrand(a.id,e.target.value)}>
      <option value="">Sin asignar</option><optgroup label="Concesionarios">{brands.filter(b=>b.unit_type==='dealership').map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</optgroup><optgroup label="Usados">{brands.filter(b=>b.unit_type==='used').map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</optgroup>
     </select>
