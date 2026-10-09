@@ -185,9 +185,16 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
  const visible=items.filter(p=>(brandFilter==='all'||p.brand_id===brandIds[brandFilter]));
  const inMonth=visible.filter(p=>p.scheduled_date?.startsWith(monthKey));
  const publishedJobIds=new Set(jobs.filter(j=>j.status==='published'&&j.external_post_id).map(j=>String(j.meta_asset_id||'')+':'+String(j.external_post_id)));
+ // Hide imported references after Meta exposes the actual publication at that time.
+ const actualMeta=externalPosts.filter(p=>!p.external_id?.startsWith('planner:'));
+ const officialMatch=p=>actualMeta.some(x=>x.meta_asset_id===p.meta_asset_id&&
+  x.local_date===p.local_date&&x.format===p.format&&
+  Math.abs((Number(x.local_time?.slice(0,2))*60+Number(x.local_time?.slice(3,5)))-
+   (Number(p.local_time?.slice(0,2))*60+Number(p.local_time?.slice(3,5))))<=5);
  const shownExternal=externalPosts.filter(p=>p.local_date?.startsWith(monthKey)&&
   (brandFilter==='all'||socialAssets.find(a=>a.id===p.meta_asset_id)?.brand_id===brandIds[brandFilter])&&
-  !publishedJobIds.has(p.meta_asset_id+':'+p.external_id));
+  !publishedJobIds.has(p.meta_asset_id+':'+p.external_id)&&
+  !(p.external_id?.startsWith('planner:')&&officialMatch(p)));
  const localShown=filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth;
  const remoteShown=filterDay?shownExternal.filter(x=>x.local_date===filterDay):shownExternal;
  const dateMap=useMemo(()=>{
