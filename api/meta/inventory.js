@@ -104,6 +104,8 @@ export default async function handler(req,res){
   if(socialTokenError)throw socialTokenError;
   const adsConns=(adsTokens||[]).filter(x=>x.organization_id===org&&(!x.expires_at||Date.parse(x.expires_at)>Date.now()));
   const socialConns=(socialTokens||[]).filter(x=>x.organization_id===org&&(!x.expires_at||Date.parse(x.expires_at)>Date.now()));
+  const igReady=(asset)=>socialConns.some(c=>c.meta_user_id===asset.metadata?.meta_user_id&&
+    (c.scopes||[]).includes('instagram_basic')&&(c.scopes||[]).includes('instagram_content_publish'));
   const found=new Map(),persisted=[];
   const upsert=async row=>{
     const key=row.kind+':'+row.external_id;
@@ -178,7 +180,7 @@ export default async function handler(req,res){
       brand_name:x.brand_id?brandMap.get(x.brand_id)||null:null,
       currency:x.kind==='ad_account'?x.metadata?.currency||null:null,
       tasks:x.kind==='page'?x.metadata?.tasks||[]:[],
-      publish_ready:x.kind==='page'?canPublishFb&&(x.metadata?.tasks||[]).includes('CREATE_CONTENT'):x.kind==='instagram_account'?canPublishIg:null,
+      publish_ready:x.kind==='page'?canPublishFb&&(x.metadata?.tasks||[]).includes('CREATE_CONTENT'):x.kind==='instagram_account'?igReady(x):null,
       stale:!found.has(x.kind+':'+x.external_id)
     };
   });
