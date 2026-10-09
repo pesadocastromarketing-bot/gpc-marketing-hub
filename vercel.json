@@ -9,6 +9,9 @@
   "functions": {
     "api/social/cron.js": {
       "maxDuration": 120
+    },
+    "api/social/history.js": {
+      "maxDuration": 120
     }
   }
 }
