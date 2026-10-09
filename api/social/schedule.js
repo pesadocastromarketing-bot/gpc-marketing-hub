@@ -63,7 +63,7 @@ export default async function handler(req,res){
    if(channel==='Facebook'&&['Imagen','Carrusel'].includes(p.format)&&media.some(m=>!['image/jpeg','image/png'].includes(m.mime_type)))throw Error('Facebook requiere imágenes JPG o PNG');
    // Confirm that the current OAuth social connection still exists; worker checks permissions again before publish.
    const {data:tokens}=await db.rpc('hub_social_tokens');
-   if(!(tokens||[]).some(t=>t.organization_id===membership.organization_id&&(!t.expires_at||Date.parse(t.expires_at)>Date.now())))throw Error('Autorizá el acceso de publicación en Meta');
+   if(channel==='Facebook'&&!(tokens||[]).some(t=>t.organization_id===membership.organization_id&&(!t.expires_at||Date.parse(t.expires_at)>Date.now())))throw Error('Autorizá el acceso de Facebook en Meta');
    if(channel==='Instagram'){
     const authorized=(tokens||[]).some(t=>t.organization_id===membership.organization_id&&t.meta_user_id===asset.metadata?.meta_user_id&&
      (!t.expires_at||Date.parse(t.expires_at)>Date.now())&&(t.scopes||[]).includes('instagram_content_publish')&&(t.scopes||[]).includes('instagram_basic'));
