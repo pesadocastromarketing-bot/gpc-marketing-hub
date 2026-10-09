@@ -28,7 +28,7 @@ function argentinaNow(){
 }
 function moneyDate(s){return new Date(s+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'})}
 
-export default function BulkCalendar({client,user,organizationId,brandIds,brandFilter,onChangeCount,openSignal=0}){
+export default function BulkCalendar({client,user,organizationId,brandIds,brandFilter,onChangeCount,openSignal=0,onOpenSettings}){
  const allBrands=BUSINESS_UNITS.filter(u=>brandIds[u.id]).map(u=>({code:u.id,id:brandIds[u.id],name:u.name,type:u.type}));
  const [month,setMonth]=useState(new Date(new Date().getFullYear(),new Date().getMonth(),1));
  const [jobs,setJobs]=useState([]);const [items,setItems]=useState([]),[media,setMedia]=useState([]),[loading,setLoading]=useState(false),[uploading,setUploading]=useState(false),[saving,setSaving]=useState(false),[message,setMessage]=useState('');
@@ -286,6 +286,33 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   }catch(e){setMessage('No se pudo guardar el lote: '+e.message)}
   finally{setSaving(false)}
  }
+ async function retryStory(post){
+  const asset=socialAssets.find(a=>a.id===post.target_asset_id);
+  if(post.status!=='draft'||post.format!=='Historia'||post.channels?.[0]!=='Instagram'||jobs.some(j=>j.content_id===post.id)){
+   setMessage('Esta historia ya tiene un trabajo o no es un borrador elegible; actualizá el calendario.');return;
+  }
+  if(!asset||asset.kind!=='instagram_account'||asset.brand_id!==post.brand_id){
+   setMessage('No se encontró la cuenta exacta del borrador. Revisá la conexión en Configuración.');return;
+  }
+  if(!asset.is_ready){
+   setMessage('Falta autorizar el perfil exacto '+destinationName(asset)+'. El permiso de otro Instagram no sirve. Conectalo desde Configuración.');
+   return;
+  }
+  if(!window.confirm('¿PUBLICAR AHORA esta historia guardada, sin duplicarla?\n\nDESTINO EXACTO:\n'+destinationLabel(asset)+'\n\nEl envío se colocará en la cola y solo aparecerá como Publicado cuando Meta lo confirme.'))return;
+  setSaving(true);setMessage('Verificando permisos de '+destinationName(asset)+'...');
+  try{
+   const {data:{session}}=await client.auth.getSession();
+   if(!session?.access_token)throw Error('Iniciá sesión de nuevo');
+   const response=await fetch('/api/social/schedule',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},body:JSON.stringify({ids:[post.id],confirmation:'PUBLICAR_AHORA'})});
+   const result=await response.json();
+   if(!response.ok)throw Error(result.error||'No se pudo enviar a la cola');
+   const item=result.results?.find(x=>x.id===post.id);
+   if(!item||item.status!=='scheduled')throw Error(item?.message||'Meta no autorizó el envío');
+   setMessage('Historia guardada enviada a la cola para '+destinationName(asset)+'. Todavía no está publicada; actualizá para ver si Meta confirmó la salida.');
+   await refresh();
+  }catch(e){setMessage('No se publicó: '+String(e.message||e)+'. La historia original sigue guardada.')}
+  finally{setSaving(false)}
+ }
  async function scheduleSelected(){
   if(!selectedRows.length)return;
   if(selectedRows.length>100){setMessage('Máximo 100 publicaciones para programar en un lote.');return}
@@ -371,7 +398,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
         {options.length?<div className="hub-destination-options">{options.map(a=><label key={a.id} className={'hub-destination-option '+(exactDestinations.includes(a.id)?'selected':'')}>
          <input type="checkbox" checked={exactDestinations.includes(a.id)} onChange={e=>setExactDestinations(old=>e.target.checked?[...new Set([...old,a.id])]:old.filter(id=>id!==a.id))}/>
          <span><b>{destinationName(a)}</b><small>{channel==='Facebook'?'Página de Facebook':'Cuenta profesional de Instagram'} · ID {a.external_id}</small>
-          {channel==='Facebook'&&!a.is_ready&&<small className="hub-destination-permission">Sin permiso CREATE_CONTENT; se podrá guardar como borrador, pero no programar aún.</small>}
+          {!a.is_ready&&<small className="hub-destination-permission">{channel==='Facebook'?'Sin permiso CREATE_CONTENT; se podrá guardar como borrador, pero no programar aún.':'Sin instagram_content_publish para este perfil exacto; conectalo antes de publicar.'}</small>}
          </span>
         </label>)}</div>:
         <p className="hub-destination-empty">No hay una cuenta de {channel} vinculada a {b.name}. Revisá Configuración → Meta para asignarla.</p>}
@@ -410,8 +437,12 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    {localShown.slice(0,150).map(p=><div key={p.id} className="hub-cal-entry">
      <input aria-label={'Seleccionar '+p.title} type="checkbox" disabled={p.status!=='draft'||jobs.some(j=>j.content_id===p.id)} checked={selectedRows.includes(p.id)} onChange={e=>setSelectedRows(v=>e.target.checked?[...v,p.id]:v.filter(x=>x!==p.id))}/>
      {p.media_paths?.length&&mediaUrls[p.media_paths[0]]&&p.format!=='Reel'?<img src={mediaUrls[p.media_paths[0]]} alt="" loading="lazy"/>:<span className="hub-cal-entry-image"><ImageIcon size={19}/></span>}
-     <div><strong>{p.title}</strong><small>{moneyDate(p.scheduled_date)} · {(p.scheduled_time||'18:00').slice(0,5)} · {BRAND_NAMES[allBrands.find(b=>b.id===p.brand_id)?.code]||'Marca'} · {socialAssets.find(a=>a.id===p.target_asset_id)?destinationLabel(socialAssets.find(a=>a.id===p.target_asset_id)):(p.target_asset_id?'Destino no disponible — revisá Meta':'Destino exacto sin definir')}</small><small>{(jobs.find(j=>j.content_id===p.id)?.status==='published'||p.status==='published')?'Publicado':(jobs.find(j=>j.content_id===p.id)?.status==='failed'||p.status==='failed')?'Error de publicación':jobs.find(j=>j.content_id===p.id)?.status==='publishing'?'En proceso en Meta':(jobs.find(j=>j.content_id===p.id)?.status==='queued'||p.status==='scheduled')?'Programado en Meta':p.publication_mode==='pending_authorization'?'Pendiente de autorización Meta':'Borrador'} · {(p.media_paths||[]).length} archivo(s)</small>{jobs.find(j=>j.content_id===p.id)?.error_message&&<small style={{color:'#c13245'}}>Error: {jobs.find(j=>j.content_id===p.id)?.error_message}</small>}</div>
-     <button title="Replicar esta publicación en otras fechas" className="secondary" onClick={()=>clone(p)}><Copy size={16}/> Replicar</button>
+     <div><strong>{p.title}</strong><small>{moneyDate(p.scheduled_date)} · {(p.scheduled_time||'18:00').slice(0,5)} · {BRAND_NAMES[allBrands.find(b=>b.id===p.brand_id)?.code]||'Marca'} · {socialAssets.find(a=>a.id===p.target_asset_id)?destinationLabel(socialAssets.find(a=>a.id===p.target_asset_id)):(p.target_asset_id?'Destino no disponible — revisá Meta':'Destino exacto sin definir')}</small><small>{(jobs.find(j=>j.content_id===p.id)?.status==='published'||p.status==='published')?'Publicado':(jobs.find(j=>j.content_id===p.id)?.status==='failed'||p.status==='failed')?'Error de publicación':jobs.find(j=>j.content_id===p.id)?.status==='publishing'?'En proceso en Meta':(jobs.find(j=>j.content_id===p.id)?.status==='queued'||p.status==='scheduled')?'Programado en Meta':p.publication_mode==='pending_authorization'?(socialAssets.find(a=>a.id===p.target_asset_id)?.is_ready?'Borrador · listo para publicar':'Borrador · sin permiso para esta cuenta'):'Borrador'} · {(p.media_paths||[]).length} archivo(s)</small>{jobs.find(j=>j.content_id===p.id)?.error_message&&<small style={{color:'#c13245'}}>Error: {jobs.find(j=>j.content_id===p.id)?.error_message}</small>}</div>
+     {p.status==='draft'&&p.format==='Historia'&&p.channels?.[0]==='Instagram'&&!jobs.some(j=>j.content_id===p.id)&&
+        (socialAssets.find(a=>a.id===p.target_asset_id)?.is_ready?
+          <button className="primary" disabled={saving} onClick={()=>retryStory(p)}><UploadCloud size={16}/> Publicar ahora</button>:
+          <button className="secondary" disabled={!onOpenSettings} onClick={()=>{setMessage('Autorizá este perfil exacto en Meta; no alcanza el permiso de otro usuario de Instagram.');onOpenSettings?.()}}>Autorizar Instagram</button>)}
+      <button title="Replicar esta publicación en otras fechas" className="secondary" onClick={()=>clone(p)}><Copy size={16}/> Replicar</button>
    </div>)}
    {remoteShown.slice(0,150).map(p=>{
    const asset=socialAssets.find(a=>a.id===p.meta_asset_id);
