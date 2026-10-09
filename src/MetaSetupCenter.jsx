@@ -8,6 +8,7 @@ export default function MetaSetupCenter({client}){
  const[busy,setBusy]=useState(false),[authorizing,setAuthorizing]=useState(false),[message,setMessage]=useState(''),[warnings,setWarnings]=useState([]);
  const[assignments,setAssignments]=useState({}),[filter,setFilter]=useState(''),[expanded,setExpanded]=useState({ad_account:false,page:true,instagram_account:true}),[showAll,setShowAll]=useState(false);
  const [scopeMessage,setScopeMessage]=useState('');
+ const [igDirectConnecting,setIgDirectConnecting]=useState('');
  const [igDiagnostics,setIgDiagnostics]=useState({});
  const [checkingIg,setCheckingIg]=useState('');
  const assigned=useMemo(()=>assets.map(a=>({...a,chosen_brand_id:Object.prototype.hasOwnProperty.call(assignments,a.id)?assignments[a.id]:a.brand_id})),[assets,assignments]);
@@ -32,7 +33,7 @@ export default function MetaSetupCenter({client}){
   }catch(e){setMessage('No se pudo sincronizar: '+e.message)}
   finally{setBusy(false)}
  }
- useEffect(()=>{const params=new URLSearchParams(window.location.search);sync(params.has('meta_connected'));if(params.has('meta_error'))setScopeMessage('Meta rechazó la autorización: '+params.get('meta_error'));if(params.has('meta_connected'))setScopeMessage('Meta confirmó la autorización. Se están actualizando las conexiones.');},[]);
+ useEffect(()=>{const params=new URLSearchParams(window.location.search);sync(params.has('meta_connected')||params.has('instagram_connected'));if(params.has('meta_error'))setScopeMessage('Meta rechazó la autorización: '+params.get('meta_error'));if(params.has('meta_connected'))setScopeMessage('Meta confirmó la autorización. Se están actualizando las conexiones.');if(params.has('instagram_connected'))setScopeMessage('Instagram Login autorizó @'+(params.get('instagram_user')||'Instagram')+'. Verificando conexión.');if(params.has('instagram_error'))setScopeMessage('Instagram Login: '+params.get('instagram_error'));},[]);
  const setBrand=(assetId,brandId)=>setAssignments(o=>({...o,[assetId]:brandId||null}));
  function propose(){
   const suggestions={};
@@ -76,14 +77,28 @@ export default function MetaSetupCenter({client}){
    setIgDiagnostics(previous=>({...previous,[asset.id]:{message:'No se pudo comprobar: '+e.message}}));
   }finally{setCheckingIg('')}
  }
+ async function connectInstagramDirect(asset){
+  if(!window.confirm('Conectar exclusivamente @'+asset.name+' mediante Instagram Login, sin cambiar sus activos en Facebook ni otras cuentas del grupo. ¿Continuar?'))return;
+  setIgDirectConnecting(asset.id);setScopeMessage('');
+  try{
+   const response=await call('/api/instagram/start',{asset_id:asset.id});
+   if(!response.url?.startsWith('https://www.instagram.com/oauth/authorize'))throw Error('Instagram no devolvió una URL segura');
+   window.location.assign(response.url);
+  }catch(e){setScopeMessage('Instagram Login: '+e.message);setIgDirectConnecting('')}
+ }
  function row(a){
   const {Icon}=kinds[a.kind];
   return <div className={'gpc-wizard-asset '+(a.stale?'stale':'')} key={a.id}>
     <span className="gpc-wizard-asset-icon"><Icon size={18}/></span>
     <div className="gpc-wizard-asset-detail"><strong>{a.name}</strong><small>{kinds[a.kind].singular} · ID {a.external_id}{a.currency?' · '+a.currency:''}</small>
       <small>{a.stale?'No aparece en la autorización actual':a.chosen_brand_id?'Vinculada a '+brandName(a.chosen_brand_id):a.suggested_brand_id?'Sugerencia: '+brandName(a.suggested_brand_id):'Vinculación pendiente'}
-       {a.kind==='instagram_account'?(a.publish_ready===true?' · Publicación autorizada para esta cuenta':' · No autorizada para publicar desde este Instagram'):a.kind==='page'&&a.publish_ready===true?' · Publicación autorizada':''}
+       {a.kind==='instagram_account'?(a.instagram_login_ready?' · Instagram Login conectado':a.publish_ready===true?' · Publicación autorizada para esta cuenta':' · No autorizada para publicar desde este Instagram'):a.kind==='page'&&a.publish_ready===true?' · Publicación autorizada':''}
       </small>
+      {a.kind==='instagram_account'&&!a.instagram_login_ready&&
+        <button className="secondary" type="button" style={{marginTop:6,alignSelf:'start'}}
+         disabled={Boolean(igDirectConnecting)||busy} onClick={()=>connectInstagramDirect(a)}>
+         <Instagram size={15}/> {igDirectConnecting===a.id?'Abriendo Instagram...':'Conectar directamente con Instagram'}
+        </button>}
       {a.kind==='instagram_account'&&!a.publish_ready&&
        <div className="gpc-ig-diagnostics">
         <button type="button" className="secondary" disabled={Boolean(checkingIg)} onClick={()=>diagnoseInstagram(a)}>
