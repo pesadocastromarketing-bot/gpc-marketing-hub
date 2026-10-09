@@ -487,3 +487,14 @@
 @media(prefers-reduced-motion:reduce){
  .sidebar,.mobile-nav-backdrop{transition:none!important}
 }
+
+
+/* Instagram Story batch editor: clear ordering and touch-size controls on phones. */
+.hub-story-order{padding:14px;border:1px solid #d9e2ed;border-radius:12px;background:#f8fafc;margin:12px 0}
+.hub-story-order>strong{display:block;margin-bottom:8px}
+.hub-story-order ol{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+.hub-story-order li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 9px;border-radius:9px;background:#fff;border:1px solid #e3e9f2;min-width:0}
+.hub-story-order li span{min-width:0;flex:1;overflow-wrap:anywhere;font-size:12px}
+.hub-story-order li div{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.hub-story-order li button.secondary{min-width:38px;height:38px;padding:5px 10px;justify-content:center}
+@media(max-width:600px){.hub-story-order li{align-items:flex-start;flex-wrap:wrap}.hub-story-order li span{flex-basis:100%}.hub-story-order li div{margin-left:auto}.hub-story-order li button.secondary{min-width:44px;height:44px}}

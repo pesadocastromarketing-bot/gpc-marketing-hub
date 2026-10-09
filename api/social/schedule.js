@@ -15,7 +15,7 @@ export default async function handler(req,res){
  const db=admin();
  const {data:membership}=await db.from('hub_members').select('organization_id,role').eq('user_id',user.id).in('role',['owner','admin','editor']).limit(1).maybeSingle();
  if(!membership)return res.status(403).json({error:'No tenés autorización para programar publicaciones'});
- const {data:posts,error:postsError}=await db.from('hub_content').select('id,organization_id,brand_id,channels,format,media_paths,scheduled_date,scheduled_time,status').eq('organization_id',membership.organization_id).in('id',ids);
+ const {data:posts,error:postsError}=await db.from('hub_content').select('id,organization_id,brand_id,target_asset_id,channels,format,media_paths,scheduled_date,scheduled_time,status').eq('organization_id',membership.organization_id).in('id',ids);
  if(postsError)throw postsError;
  const {data:assets,error:assetsError}=await db.from('hub_meta_assets').select('id,brand_id,kind,metadata,display_name').eq('organization_id',membership.organization_id);
  if(assetsError)throw assetsError;
@@ -48,7 +48,10 @@ export default async function handler(req,res){
    if(p.format==='Imagen'&&(media.length!==1||!media[0].mime_type.startsWith('image/')))throw Error('Imagen requiere una imagen');
    if(p.format==='Carrusel'&&(media.length<2||media.length>10||media.some(m=>!m.mime_type.startsWith('image/'))))throw Error('Carrusel requiere entre 2 y 10 imágenes');
    if(p.format==='Reel'&&(media.length!==1||!media[0].mime_type.startsWith('video/')))throw Error('Reel requiere un video');
-   if(p.format==='Historia')throw Error('Historias aún no están habilitadas en el publicador');
+   if(p.format==='Historia'){
+    if(channel!=='Instagram')throw Error('Las historias automáticas están disponibles solamente en Instagram');
+    if(media.length!==1||!['image/jpeg','video/mp4','video/quicktime'].includes(media[0].mime_type))throw Error('Historia de Instagram requiere una sola imagen JPG o un video MP4/MOV');
+   }
    if(channel==='Instagram'&&['Imagen','Carrusel'].includes(p.format)&&media.some(m=>m.mime_type!=='image/jpeg'))throw Error('Instagram requiere imágenes JPG; convertí las imágenes antes de programar');
    if(channel==='Facebook'&&['Imagen','Carrusel'].includes(p.format)&&media.some(m=>!['image/jpeg','image/png'].includes(m.mime_type)))throw Error('Facebook requiere imágenes JPG o PNG');
    // Confirm that the current OAuth social connection still exists; worker checks permissions again before publish.
