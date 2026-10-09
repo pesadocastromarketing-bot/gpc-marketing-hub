@@ -514,3 +514,18 @@
 .hub-external-entry>div small{overflow-wrap:anywhere}
 .hub-meta-post-link{white-space:nowrap;text-decoration:none}
 @media(max-width:700px){.hub-meta-history-bar{flex-direction:column;align-items:stretch}.hub-meta-history-bar button{justify-content:center}.hub-external-entry{grid-template-columns:48px minmax(0,1fr)}.hub-external-entry>img,.hub-external-entry>.hub-cal-entry-image{margin-left:0;grid-column:1}.hub-external-entry>div{grid-column:2}.hub-external-entry .hub-meta-post-link{grid-column:2;justify-self:end;font-size:12px;min-height:40px}}
+
+/* External Meta Planner references: distinct from Hub-owned publishing jobs. */
+.hub-planner-import{border:1px solid #dfe8f6;background:#fff;border-radius:13px;padding:20px;display:grid;gap:12px;min-width:0}
+.hub-planner-import h3{margin:0;color:#1b3459;font-size:16px}
+.hub-planner-import p{font-size:12px;color:#64738d;margin:0;line-height:1.6}
+.hub-planner-import-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.hub-planner-import-actions label.secondary{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:9px 13px;border-radius:8px;border:1px solid #dce4f1;background:#f7faff;color:#385480;font-size:12px;font-weight:600}
+.hub-planner-import-actions input[type=file]{display:none}
+.hub-planner-import textarea{display:block;width:100%;min-height:110px;resize:vertical;white-space:pre-wrap;padding:11px;border:1px solid #dbe5f2;border-radius:9px;font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#243651}
+.hub-planner-import-result{display:grid;gap:8px}
+.hub-planner-import-result>small{font-size:11px;color:#607493;overflow-wrap:anywhere}
+.hub-planner-import-result>.primary{justify-self:start;min-height:40px}
+.hub-planner-import-errors{display:grid;gap:5px;color:#a43640}
+.hub-planner-import-errors>small{font-size:12px}
+@media(max-width:700px){.hub-planner-import{padding:13px}.hub-planner-import-actions>*{width:100%}.hub-planner-import-result>.primary{width:100%;justify-self:stretch}}
