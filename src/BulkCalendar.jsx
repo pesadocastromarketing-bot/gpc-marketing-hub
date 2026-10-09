@@ -15,6 +15,13 @@ const destinationName=a=>a?.kind==='instagram_account'?'@'+String(a.name||'').re
 const destinationLabel=a=>assetChannel(a)+' · '+destinationName(a)+' (ID '+a.external_id+')';
 const isVideoMime=m=>m?.startsWith('video/');
 const maxMediaCount=10;
+// Each Instagram Story is a separate Media API item, even when the user selects a batch.
+// Space jobs one minute apart and preserve their selected order in the calendar.
+const storySlot=(date,time,index)=>{
+ const original=Date.parse(date+'T'+time.slice(0,5)+':00-03:00');
+ const argentinaTime=new Date(original+index*60_000-3*60*60_000).toISOString();
+ return {scheduled_date:argentinaTime.slice(0,10),scheduled_time:argentinaTime.slice(11,16)};
+};
 function moneyDate(s){return new Date(s+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'})}
 
 export default function BulkCalendar({client,user,organizationId,brandIds,brandFilter,onChangeCount,openSignal=0}){
@@ -111,7 +118,15 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
  const selectedBrandIds=new Set(selectedBrands.map(code=>brandIds[code]).filter(Boolean));
  const selectedTargets=socialAssets.filter(a=>exactDestinations.includes(a.id)&&selectedBrandIds.has(a.brand_id)&&selectedChannels.includes(assetChannel(a)));
  const destinationCount=selectedTargets.length;
- const estimated=dates.length*destinationCount;
+ const estimated=dates.length*destinationCount*(format==='Historia'?selectedMedia.length:1);
+ function moveStory(path,direction){
+  setSelectedMedia(old=>{
+   const index=old.indexOf(path),next=index+direction;
+   if(index<0||next<0||next>=old.length)return old;
+   const reordered=[...old];[reordered[index],reordered[next]]=[reordered[next],reordered[index]];
+   return reordered;
+  });
+ }
  function toggleBrand(code,checked){
   setSelectedBrands(old=>checked?[...new Set([...old,code])]:old.filter(x=>x!==code));
   if(!checked)setExactDestinations(old=>old.filter(assetId=>socialAssets.find(a=>a.id===assetId)?.brand_id!==brandIds[code]));
@@ -130,35 +145,50 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   if(estimated>200){setMessage('Máximo 200 publicaciones por lote. Dividí la planificación.');return}
   if(format==='Historia'&&selectedTargets.some(a=>a.kind!=='instagram_account')){setMessage('Las historias automáticas son solo para Instagram. Desmarcá las páginas de Facebook.');return}
   const files=selectedMedia.map(p=>media.find(m=>m.storage_path===p)).filter(Boolean);
+  if(files.length!==selectedMedia.length){setMessage('No se encontraron todos los archivos seleccionados. Actualizá la biblioteca antes de crear el lote.');return}
   if(format==='Carrusel'&&(files.length<2||files.some(m=>isVideoMime(m.mime_type)))){
    setMessage('Para carrusel elegí de 2 a 10 imágenes.');return
   }
   if(format==='Reel'&&(files.length!==1||!isVideoMime(files[0]?.mime_type))){
    setMessage('Para Reel cargá un único video MP4/MOV.');return
   }
-  if(format==='Historia'&&(files.length!==1||!['image/jpeg','image/png','image/webp','video/mp4','video/quicktime'].includes(files[0]?.mime_type))){
-   setMessage('Para Historia de Instagram elegí un único JPG, PNG, WebP, MP4 o MOV.');return
+  if(format==='Historia'&&files.some(m=>!['image/jpeg','image/png','image/webp','video/mp4','video/quicktime'].includes(m.mime_type))){
+   setMessage('Las historias admiten hasta 10 archivos JPG, PNG, WebP, MP4 o MOV por lote.');return
   }
   if(format==='Imagen'&&files.some(m=>isVideoMime(m.mime_type))){
    setMessage('El formato Imagen requiere imágenes; elegí Reel o Historia para video.');return
   }
   if(dates.some(d=>d<today)){setMessage('No se pueden planificar publicaciones en fechas pasadas.');return}
   const preciseTargets=selectedTargets.map(a=>'• '+(allBrands.find(b=>b.id===a.brand_id)?.name||'Unidad sin nombre')+' — '+destinationLabel(a)).join('\n');
-  if(!window.confirm('¿Crear '+estimated+' publicaciones en '+dates.length+' fecha(s)?\n\nSE PUBLICARÁ EN ESTAS CUENTAS EXACTAS:\n'+preciseTargets+'\n\n'+(planMode==='pending_authorization'?'El HUB intentará programar AUTOMÁTICAMENTE solo estas cuentas autorizadas. Las que no tengan permisos quedarán pendientes.':'Quedarán como borradores y NO se publicarán.')))return;
+  if(!window.confirm('¿Crear '+estimated+(format==='Historia'?' historias':' publicaciones')+' en '+dates.length+' fecha(s)?\n\nSE PUBLICARÁ EN ESTAS CUENTAS EXACTAS:\n'+preciseTargets+'\n\n'+(format==='Historia'?'Cada archivo será una historia independiente, programada con un minuto de separación en el orden seleccionado.\n\n':'')+(planMode==='pending_authorization'?'El HUB intentará programar AUTOMÁTICAMENTE solo estas cuentas autorizadas. Las que no tengan permisos quedarán pendientes.':'Quedarán como borradores y NO se publicarán.')))return;
   setSaving(true);setMessage('');
   const batchId=id();
   const targets=selectedTargets.map(a=>({brand_id:a.brand_id,channel:assetChannel(a),target_asset_id:a.id}));
   try{
    let preparedMedia=selectedMedia;
-   if(format==='Historia'&&['image/png','image/webp'].includes(files[0]?.mime_type)){
-    setMessage('Preparando imagen JPG para la historia de Instagram...');
-    preparedMedia=[await prepareStoryImage(files[0])];
+   if(format==='Historia'){
+    preparedMedia=[];
+    for(let i=0;i<files.length;i++){
+     const file=files[i];
+     if(['image/png','image/webp'].includes(file.mime_type)){
+      setMessage('Preparando historia '+(i+1)+' de '+files.length+'...');
+      preparedMedia.push(await prepareStoryImage(file));
+     }else preparedMedia.push(file.storage_path);
+    }
    }
-   const rows=dates.flatMap(date=>targets.map(target=>({
-    organization_id:organizationId,brand_id:target.brand_id,target_asset_id:target.target_asset_id,title:title.trim(),copy_text:copy.trim(),format,
-    scheduled_date:date,scheduled_time:time,channels:[target.channel],media_paths:preparedMedia,
-    created_by:user.id,status:'draft',publication_mode:planMode,timezone:'America/Argentina/Buenos_Aires',batch_id:batchId
-   })));
+   const rows=dates.flatMap(date=>targets.flatMap(target=>{
+    const paths=format==='Historia'?preparedMedia:[preparedMedia];
+    return paths.map((path,index)=>{
+     const slot=format==='Historia'?storySlot(date,time,index):{scheduled_date:date,scheduled_time:time};
+     return {
+      organization_id:organizationId,brand_id:target.brand_id,target_asset_id:target.target_asset_id,
+      title:format==='Historia'?title.trim()+' · Historia '+(index+1)+'/'+preparedMedia.length:title.trim(),
+      copy_text:copy.trim(),format,...slot,channels:[target.channel],
+      media_paths:format==='Historia'?[path]:path,
+      created_by:user.id,status:'draft',publication_mode:planMode,timezone:'America/Argentina/Buenos_Aires',batch_id:batchId
+     };
+    });
+   }));
    const {data:created,error}=await client.from('hub_content').insert(rows).select('id');
    if(error)throw Error(error.message);
    let summary='Se crearon '+rows.length+' publicaciones en Supabase.';
@@ -234,7 +264,11 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
     {isVideoMime(file.mime_type)?<Video size={25}/>:mediaUrls[file.storage_path]?<img src={mediaUrls[file.storage_path]} alt={file.filename}/>:<ImageIcon size={23}/>}
     <small title={file.filename}>{file.filename}</small>{selectedMedia.includes(file.storage_path)&&<Check size={17} className="hub-media-check"/>}</button>)}</div></div>}
    <div className="hub-composer-two"><label>Título interno<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Ej. Amarok tasa 0%"/></label><label>Formato<select value={format} onChange={e=>{const next=e.target.value;setFormat(next);if(next==='Historia'){setSelectedChannels(['Instagram']);setExactDestinations(old=>old.filter(assetId=>assetChannel(socialAssets.find(a=>a.id===assetId))==='Instagram'))}}}><option>Imagen</option><option>Carrusel</option><option>Reel</option><option>Historia</option></select></label></div>
-   {format==='Historia'&&<p className="hub-calendar-warning">Historia de Instagram: 1 imagen JPG/PNG/WebP o 1 video MP4/MOV. Las imágenes PNG/WebP se convierten automáticamente a JPG. El texto del copy no se superpone a la historia: incorporalo al diseño. Se publicará a la hora programada cuando Meta lo confirme.</p>}
+   {format==='Historia'&&<p className="hub-calendar-warning">Historias de Instagram: seleccioná hasta 10 fotos o videos juntos (JPG, PNG, WebP, MP4 o MOV). Se creará una historia independiente por archivo, en el orden indicado abajo, con un minuto de diferencia entre publicaciones. Los PNG/WebP se convierten a JPG. El copy no se superpone a la historia: incluilo en el diseño.</p>}
+   {format==='Historia'&&selectedMedia.length>0&&<div className="hub-story-order"><strong>Orden de las historias ({selectedMedia.length})</strong><ol>{selectedMedia.map((path,index)=>{
+    const file=media.find(m=>m.storage_path===path);
+    return <li key={path}><span>{index+1}. {file?.filename||'Archivo seleccionado'}</span><div><button type="button" className="secondary" disabled={index===0||saving} aria-label={'Subir historia '+(index+1)} onClick={()=>moveStory(path,-1)}>↑</button><button type="button" className="secondary" disabled={index===selectedMedia.length-1||saving} aria-label={'Bajar historia '+(index+1)} onClick={()=>moveStory(path,1)}>↓</button><button type="button" className="secondary" disabled={saving} aria-label={'Quitar historia '+(index+1)} onClick={()=>setSelectedMedia(current=>current.filter(p=>p!==path))}>×</button></div></li>;
+   })}</ol></div>
    <label className="hub-wide-label">Copy de la publicación<textarea rows="3" placeholder="Texto que se reutilizará en todas las fechas y cuentas..." value={copy} onChange={e=>setCopy(e.target.value)}/></label>
    <div className="hub-composer-heading"><h3>2. Elegí los concesionarios y cada cuenta exacta</h3><span>Oficiales y paralelas, siempre por separado</span></div>
    <div className="hub-business-units">
@@ -277,7 +311,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    <div className="hub-destination-review"><strong>Se va a publicar en:</strong>
     {selectedTargets.length?<ul>{selectedTargets.map(a=><li key={a.id}><strong>{allBrands.find(b=>b.id===a.brand_id)?.name||'Unidad'}</strong> · {destinationLabel(a)}</li>)}</ul>:<p>Seleccioná la cuenta exacta arriba para continuar. No se elegirá ningún perfil por defecto.</p>}
    </div>
-   <div className="hub-submit"><div><strong>{estimated} publicaciones</strong><small>{dates.length} fechas × {destinationCount} cuenta(s) exacta(s)</small></div><button className="primary" disabled={saving||uploading||estimated===0} onClick={saveBatch}>{saving?'Guardando...':(planMode==='pending_authorization'?'Crear y programar ':'Guardar ')+estimated+(planMode==='pending_authorization'?' publicación(es)':' borrador(es)')}</button></div>
+   <div className="hub-submit"><div><strong>{estimated} {format==='Historia'?'historias':'publicaciones'}</strong><small>{dates.length} fechas × {destinationCount} cuenta(s) exacta(s){format==='Historia'?' × '+selectedMedia.length+' archivo(s)':''}</small></div><button className="primary" disabled={saving||uploading||estimated===0} onClick={saveBatch}>{saving?'Guardando...':(planMode==='pending_authorization'?'Crear y programar ':'Guardar ')+estimated+(planMode==='pending_authorization'?' publicación(es)':' borrador(es)')}</button></div>
    {message&&<p className="hub-cal-notice" role="alert" aria-live="assertive">{message}</p>}
    <p className="hub-calendar-warning">No se publicará en otros perfiles del concesionario: solo en los destinos exactos que seleccionaste arriba. «Crear y programar» requiere permisos de Meta; si faltan, las publicaciones quedarán sin programar. «Borradores» no publica nada.</p>
   </section>}
