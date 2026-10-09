@@ -8,9 +8,9 @@ export default function SocialConnections({client,brandIds}){
   const response=await fetch(path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+session?.access_token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
   const json=await response.json();if(!response.ok)throw Error(json.error||'Error de servidor');return json;
  }
- async function refresh(){
+ async function refresh(force=false){
   setBusy(true);try{
-   const json=await request('/api/social/accounts');
+   const json=await request(force===true?'/api/social/accounts':'/api/meta/assets-fast?view=social');
    setAssets(json.assets||[]);setConnected(Boolean(json.connected));
    if(json.warnings?.length)setMessage(json.warnings.join(' · '));
   }catch(e){setMessage(e.message)}finally{setBusy(false)}
@@ -33,7 +33,7 @@ export default function SocialConnections({client,brandIds}){
   }catch(e){setMessage(e.message)}
   finally{setBusy(false)}
  }
- return <section className="panel hub-social-panel"><div className="panelhead"><h3>Redes para el calendario</h3><button className="secondary" onClick={refresh} disabled={busy}><RefreshCw size={15}/> Actualizar</button></div>
+ return <section className="panel hub-social-panel"><div className="panelhead"><h3>Redes para el calendario</h3><button className="secondary" onClick={()=>refresh(true)} disabled={busy}><RefreshCw size={15}/> Actualizar</button></div>
   <div className="hub-social-body"><p>Autorizá tus páginas y vinculá cada perfil a una marca. Después podrás programar desde el calendario las publicaciones preparadas para ese destino.</p>
    <div className="hub-social-actions">
     <button className="primary" disabled={authorizing} onClick={()=>connect('social_fb')}><Facebook size={17}/> Conectar páginas de Facebook</button>
