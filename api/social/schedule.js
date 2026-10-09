@@ -65,8 +65,9 @@ export default async function handler(req,res){
    const {data:tokens}=await db.rpc('hub_social_tokens');
    if(!(tokens||[]).some(t=>t.organization_id===membership.organization_id&&(!t.expires_at||Date.parse(t.expires_at)>Date.now())))throw Error('Autorizá el acceso de publicación en Meta');
    if(channel==='Instagram'){
-    const authorized=(tokens||[]).some(t=>t.organization_id===membership.organization_id&&(t.scopes||[]).includes('instagram_content_publish'));
-    if(!authorized)throw Error('Falta instagram_content_publish; autorizá Instagram desde Configuración');
+    const authorized=(tokens||[]).some(t=>t.organization_id===membership.organization_id&&t.meta_user_id===asset.metadata?.meta_user_id&&
+     (!t.expires_at||Date.parse(t.expires_at)>Date.now())&&(t.scopes||[]).includes('instagram_content_publish')&&(t.scopes||[]).includes('instagram_basic'));
+    if(!authorized)throw Error('El perfil @'+asset.display_name+' no tiene instagram_content_publish autorizado. Conectá ese Instagram exacto desde Configuración; el permiso de otros perfiles no sirve.');
    }
    const {error:jobError}=await db.from('hub_publication_jobs').insert({
     organization_id:membership.organization_id,content_id:p.id,meta_asset_id:asset.id,scheduled_for:scheduled.toISOString(),status:'queued'
