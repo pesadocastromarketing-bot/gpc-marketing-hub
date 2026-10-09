@@ -104,11 +104,24 @@ export default async function handler(req,res){
   if(socialTokenError)throw socialTokenError;
   const adsConns=(adsTokens||[]).filter(x=>x.organization_id===org&&(!x.expires_at||Date.parse(x.expires_at)>Date.now()));
   const socialConns=(socialTokens||[]).filter(x=>x.organization_id===org&&(!x.expires_at||Date.parse(x.expires_at)>Date.now()));
+  const igReady=(asset)=>socialConns.some(c=>c.meta_user_id===asset.metadata?.meta_user_id&&
+    (c.scopes||[]).includes('instagram_basic')&&(c.scopes||[]).includes('instagram_content_publish'));
   const found=new Map(),persisted=[];
   const upsert=async row=>{
     const key=row.kind+':'+row.external_id;
-    if(found.has(key))return;
-    found.set(key,true);
+    const previousIndex=found.get(key);
+    if(previousIndex!==undefined){
+      // A page/profile may be visible to multiple Facebook identities.
+      // Prefer the identity with a real Instagram publishing grant for this exact IG ID.
+      if(row.kind==='instagram_account'){
+        const authorized=userId=>socialConns.some(c=>c.meta_user_id===userId&&
+          (c.scopes||[]).includes('instagram_basic')&&(c.scopes||[]).includes('instagram_content_publish'));
+        const previous=persisted[previousIndex];
+        if(authorized(row.metadata?.meta_user_id)&&!authorized(previous.metadata?.meta_user_id))persisted[previousIndex]=row;
+      }
+      return;
+    }
+    found.set(key,persisted.length);
     persisted.push(row);
   };
   for(const conn of adsConns){
@@ -178,7 +191,7 @@ export default async function handler(req,res){
       brand_name:x.brand_id?brandMap.get(x.brand_id)||null:null,
       currency:x.kind==='ad_account'?x.metadata?.currency||null:null,
       tasks:x.kind==='page'?x.metadata?.tasks||[]:[],
-      publish_ready:x.kind==='page'?canPublishFb&&(x.metadata?.tasks||[]).includes('CREATE_CONTENT'):x.kind==='instagram_account'?canPublishIg:null,
+      publish_ready:x.kind==='page'?canPublishFb&&(x.metadata?.tasks||[]).includes('CREATE_CONTENT'):x.kind==='instagram_account'?igReady(x):null,
       stale:!found.has(x.kind+':'+x.external_id)
     };
   });

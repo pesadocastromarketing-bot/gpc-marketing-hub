@@ -48,6 +48,8 @@ export default async function handler(req,res){
   const hasAdAccess=adConns.length>0||socialConns.some(x=>(x.scopes||[]).some(s=>['ads_read','ads_management'].includes(s)));
   const fb=socialConns.some(x=>(x.scopes||[]).includes('pages_manage_posts'));
   const ig=socialConns.some(x=>(x.scopes||[]).includes('instagram_basic')&&(x.scopes||[]).includes('instagram_content_publish'));
+  const igReady=(asset)=>socialConns.some(x=>x.meta_user_id===asset.metadata?.meta_user_id&&
+    (x.scopes||[]).includes('instagram_basic')&&(x.scopes||[]).includes('instagram_content_publish'));
   const all=assetsResult.data||[],brands=brandsResult.data||[];
   if(view==='ads')return res.status(200).json({
    accounts:hasAdAccess?all.filter(x=>x.kind==='ad_account').map(x=>({
@@ -60,7 +62,7 @@ export default async function handler(req,res){
    assets:socialConns.length?all.filter(x=>['page','instagram_account'].includes(x.kind)).map(x=>({
     id:x.id,brand_id:x.brand_id,kind:x.kind,name:x.display_name,external_id:x.external_id,
     tasks:x.metadata?.tasks||[],
-    is_ready:x.kind==='page'?(x.metadata?.tasks||[]).includes('CREATE_CONTENT'):ig
+    is_ready:x.kind==='page'?(x.metadata?.tasks||[]).includes('CREATE_CONTENT'):igReady(x)
    })):[],
    warnings:[],connected:socialConns.length>0,cached:true
   });
@@ -72,7 +74,7 @@ export default async function handler(req,res){
    brand_name:x.brand_id?nameById.get(x.brand_id)||null:null,
    currency:x.kind==='ad_account'?x.metadata?.currency||null:null,
    tasks:x.kind==='page'?x.metadata?.tasks||[]:[],
-   publish_ready:x.kind==='page'?fb&&(x.metadata?.tasks||[]).includes('CREATE_CONTENT'):x.kind==='instagram_account'?ig:null,
+   publish_ready:x.kind==='page'?fb&&(x.metadata?.tasks||[]).includes('CREATE_CONTENT'):x.kind==='instagram_account'?igReady(x):null,
    stale:false
   })).sort((a,b)=>(order[a.kind]??5)-(order[b.kind]??5)||safe(a.name).localeCompare(safe(b.name)));
   return res.status(200).json({
