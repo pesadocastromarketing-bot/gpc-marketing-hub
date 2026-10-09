@@ -260,13 +260,14 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
       title:format==='Historia'?generatedTitle+' · '+(index+1)+'/'+preparedMedia.length:generatedTitle,
       copy_text:copy.trim(),format,...slot,channels:[target.channel],
       media_paths:format==='Historia'?[path]:path,
-      created_by:user.id,status:'draft',publication_mode:planMode,timezone:'America/Argentina/Buenos_Aires',batch_id:batchId
+      // Supabase only stores draft/pending_authorization. 'now' is a UI action, not a DB publication mode.
+      created_by:user.id,status:'draft',publication_mode:planMode==='draft'?'draft':'pending_authorization',timezone:'America/Argentina/Buenos_Aires',batch_id:batchId
      };
     });
    }));
    const {data:created,error}=await client.from('hub_content').insert(rows).select('id');
    if(error)throw Error(error.message);
-   let summary='Se crearon '+rows.length+' publicaciones en Supabase.';
+   let summary='Se guardaron '+rows.length+' '+(format==='Historia'?'historias':'publicaciones')+' en el calendario.';
    if(planMode!=='draft'&&created?.length){
     const {data:{session}}=await client.auth.getSession();
     const groups=[];for(let i=0;i<created.length;i+=100)groups.push(created.slice(i,i+100).map(x=>x.id));
@@ -278,7 +279,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
      success+=result.scheduled||0;failed+=(result.total||ids.length)-(result.scheduled||0);
      details.push(...(result.results||[]).filter(x=>x.status==='error').slice(0,3).map(x=>x.message));
     }
-    summary+=(planMode==='now'?' En cola para publicar ahora: ':' Programadas: ')+success+'. Sin programar: '+failed+'.'+(details.length?' '+[...new Set(details)].slice(0,3).join(' | '):'')+(planMode==='now'&&success?' El estado cambiará a Publicado cuando Meta lo confirme.':'');
+    summary+=(planMode==='now'?' En cola para publicar ahora: ':' Programadas: ')+success+'. Sin programar: '+failed+'.'+(failed?' Las que no se pudieron programar quedaron guardadas como borradores.':'')+(details.length?' Motivo: '+[...new Set(details)].slice(0,3).join(' | '):'')+(planMode==='now'&&success?' El estado cambiará a Publicado cuando Meta lo confirme.':'');
    }
    setMessage(summary);setShowComposer(false);setDates([dateOffset(today,1)]);setSelectedMedia([]);setExactDestinations([]);setTitle('');setCopy('');
    await refresh();
