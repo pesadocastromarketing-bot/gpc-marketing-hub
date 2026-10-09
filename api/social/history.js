@@ -43,14 +43,16 @@ function argentinaDate(instant){
  return {date:p.year+'-'+p.month+'-'+p.day,time:p.hour+':'+p.minute};
 }
 function normalize(asset,item,scheduled=false){
- const from=item.timestamp||item.created_time||(typeof item.scheduled_publish_time==='number'?new Date(item.scheduled_publish_time*1000).toISOString():item.scheduled_publish_time);
+ const rawTimestamp=item.timestamp||item.created_time||item.scheduled_publish_time;
+ const from=typeof rawTimestamp==='number'||/^\d{10}$/.test(String(rawTimestamp||''))
+  ?new Date(Number(rawTimestamp)*1000).toISOString():rawTimestamp;
  const iso=new Date(from);
  const local=argentinaDate(from);
  if(!local||!item.id||!Number.isFinite(iso.getTime()))return null;
  const instagram=asset.kind==='instagram_account';
  const story=item.media_product_type==='STORY'||item._story;
  const format=story?'Historia':item.media_product_type==='REELS'?'Reel':item.media_type==='CAROUSEL_ALBUM'?'Carrusel':
-  instagram&&item.media_type==='VIDEO'?'Reel':'Imagen';
+  instagram&&item.media_type==='VIDEO'?'Video':'Imagen';
  const remoteThumbnail=instagram?(item.thumbnail_url||((item.media_type==='IMAGE'||story)?item.media_url:null)):
   (item.full_picture||item.attachments?.data?.[0]?.media?.image?.src||null);
  return {
@@ -101,7 +103,7 @@ export default async function handler(req,res){
  const month=req.body?.month;
  if(typeof month!=='string'||!monthPattern.test(month))return res.status(400).json({error:'Mes inválido'});
  const thisMonth=new Date().toISOString().slice(0,7);
- if(month>String(Number(thisMonth.slice(0,4))+1)+'-12')return res.status(400).json({error:'Mes demasiado lejano'});
+ if(month>String(Number(thisMonth.slice(0,4))+2)+'-12')return res.status(400).json({error:'Mes demasiado lejano'});
  try{
   const bearer=req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
   if(!bearer)return res.status(401).json({error:'Iniciá sesión para sincronizar'});
