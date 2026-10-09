@@ -166,7 +166,12 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   }
   if(planMode!=='now'&&dates.some(d=>d<today)){setMessage('No se pueden planificar publicaciones en fechas pasadas.');return}
   const preciseTargets=selectedTargets.map(a=>'• '+(allBrands.find(b=>b.id===a.brand_id)?.name||'Unidad sin nombre')+' — '+destinationLabel(a)).join('\n');
-  if(!window.confirm('¿Crear '+estimated+(format==='Historia'?' historias':' publicaciones')+' en '+dates.length+' fecha(s)?\n\nSE PUBLICARÁ EN ESTAS CUENTAS EXACTAS:\n'+preciseTargets+'\n\n'+(format==='Historia'?'Cada archivo será una historia independiente, programada con un minuto de separación en el orden seleccionado.\n\n':'')+(planMode==='pending_authorization'?'El HUB intentará programar AUTOMÁTICAMENTE solo estas cuentas autorizadas. Las que no tengan permisos quedarán pendientes.':'Quedarán como borradores y NO se publicarán.')))return;
+  const operation=planMode==='now'
+   ?'PUBLICAR AHORA: se enviará a la cola inmediata (próximo minuto aproximadamente). Meta debe autorizar la publicación.'
+   :planMode==='pending_authorization'
+    ?'PROGRAMAR: Meta recibirá las publicaciones en las fechas seleccionadas.'
+    :'GUARDAR BORRADOR: no se enviará contenido a Meta.';
+  if(!window.confirm('¿Crear '+estimated+(format==='Historia'?' historias':' publicaciones')+'?\n\nDESTINOS EXACTOS:\n'+preciseTargets+'\n\n'+operation))return;
   setSaving(true);setMessage('');
   const batchId=id();
   const targets=selectedTargets.map(a=>({brand_id:a.brand_id,channel:assetChannel(a),target_asset_id:a.id}));
