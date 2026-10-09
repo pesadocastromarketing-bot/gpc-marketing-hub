@@ -1,4 +1,4 @@
-import React,{useEffect,useMemo,useState} from 'react';
+import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {CalendarDays,UploadCloud,Plus,Copy,Check,ChevronLeft,ChevronRight,Trash2,Image as ImageIcon,Video,Clock,Layers,RefreshCw} from 'lucide-react';
 import {BUSINESS_UNITS} from './businessUnits.js';
 
@@ -38,6 +38,13 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
  const [selectedRows,setSelectedRows]=useState([]);
  const [socialAssets,setSocialAssets]=useState([]),[exactDestinations,setExactDestinations]=useState([]);
  const [mediaUrls,setMediaUrls]=useState({});
+ const [externalPosts,setExternalPosts]=useState([]);
+ const [syncingHistory,setSyncingHistory]=useState(false);
+ const [historyFeedback,setHistoryFeedback]=useState('');
+ const [historyWarnings,setHistoryWarnings]=useState([]);
+ const syncedMonths=useRef(new Set());
+ const activeMonth=useRef('');
+ const monthKey=dateKey(month).slice(0,7);
  useEffect(()=>{setSelectedBrands(old=>old.length?old:allBrands.slice(0,1).map(x=>x.code))},[organizationId]);
  useEffect(()=>{if(openSignal>0)setShowComposer(true)},[openSignal]);
  async function refresh(){
@@ -45,7 +52,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   const [a,b,c]=await Promise.all([
    client.from('hub_content').select('id,title,copy_text,format,scheduled_date,scheduled_time,channels,brand_id,target_asset_id,media_paths,batch_id,publication_mode,status').eq('organization_id',organizationId).order('scheduled_date',{ascending:true}).limit(1500),
    client.from('hub_media').select('storage_path,filename,mime_type,size_bytes').eq('organization_id',organizationId).order('created_at',{ascending:false}).limit(100),
-   client.from('hub_publication_jobs').select('id,content_id,status,error_message,external_post_id,scheduled_for').eq('organization_id',organizationId).order('created_at',{ascending:false}).limit(1000)
+   client.from('hub_publication_jobs').select('id,content_id,meta_asset_id,status,error_message,external_post_id,scheduled_for').eq('organization_id',organizationId).order('created_at',{ascending:false}).limit(1000)
   ]);
   if(a.error)setMessage('No se pudo cargar el calendario: '+a.error.message);
   else {setItems(a.data||[]);onChangeCount?.((a.data||[]).length)}
@@ -54,6 +61,37 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   if(!c.error)setJobs(c.data||[]);
   setLoading(false);
  }
+ async function loadMetaHistory(key){
+  const start=key+'-01';
+  const end=dateKey(new Date(Number(key.slice(0,4)),Number(key.slice(5,7)),1));
+  const {data,error}=await client.from('hub_external_posts')
+   .select('id,meta_asset_id,external_id,network,format,status,local_date,local_time,caption,thumbnail_url,permalink_url,last_synced_at')
+   .eq('organization_id',organizationId).gte('local_date',start).lt('local_date',end)
+   .order('local_date',{ascending:true}).limit(1200);
+  if(error){setHistoryFeedback('No se pudo leer el historial guardado: '+error.message);return}
+  if(activeMonth.current===key)setExternalPosts(data||[]);
+ }
+ async function syncMetaHistory(key,manual=false){
+  if(syncedMonths.current.has(key)&&!manual)return;
+  syncedMonths.current.add(key);
+  setSyncingHistory(true);
+  if(manual)setHistoryFeedback('Consultando publicaciones anteriores en Meta...');
+  try{
+   const {data:{session}}=await client.auth.getSession();
+   if(!session?.access_token)throw Error('Iniciá sesión para consultar Meta');
+   const response=await fetch('/api/social/history',{method:'POST',headers:{Authorization:'Bearer '+session.access_token,'Content-Type':'application/json'},body:JSON.stringify({month:key})});
+   const data=await response.json();
+   if(!response.ok)throw Error(data.error||'No se pudo consultar Meta');
+   setHistoryWarnings(data.warnings||[]);
+   setHistoryFeedback('Meta: '+data.imported+' registros consultados de '+data.assets_checked+' cuentas. '+(data.warnings?.length?'Algunas cuentas requieren revisión.':'Historial actualizado.'));
+   await loadMetaHistory(key);
+  }catch(e){syncedMonths.current.delete(key);setHistoryFeedback('Historial de Meta: '+String(e.message||e))}
+  finally{setSyncingHistory(false)}
+ }
+ useEffect(()=>{
+  activeMonth.current=monthKey;setFilterDay('');setExternalPosts([]);setHistoryFeedback('');setHistoryWarnings([]);
+  loadMetaHistory(monthKey).then(()=>syncMetaHistory(monthKey));
+ },[monthKey,organizationId]);
  useEffect(()=>{refresh();let active=true;(async()=>{try{const {data:{session}}=await client.auth.getSession();const r=await fetch('/api/meta/assets-fast?view=social',{headers:{Authorization:'Bearer '+session?.access_token}});const j=await r.json();if(active&&r.ok)setSocialAssets((j.assets||[]).filter(a=>a.brand_id&&['page','instagram_account'].includes(a.kind)));}catch(_){}})();return()=>{active=false}},[organizationId]);
  useEffect(()=>{
   const unique=[...new Set(items.filter(p=>p.scheduled_date?.startsWith(dateKey(month).slice(0,7))).flatMap(p=>p.media_paths||[]))].slice(0,45);
@@ -66,12 +104,19 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   return()=>{active=false};
  },[month,items]);
  const visible=items.filter(p=>(brandFilter==='all'||p.brand_id===brandIds[brandFilter]));
- const inMonth=visible.filter(p=>p.scheduled_date?.startsWith(dateKey(month).slice(0,7)));
+ const inMonth=visible.filter(p=>p.scheduled_date?.startsWith(monthKey));
+ const publishedJobIds=new Set(jobs.filter(j=>j.status==='published'&&j.external_post_id).map(j=>String(j.meta_asset_id||'')+':'+String(j.external_post_id)));
+ const shownExternal=externalPosts.filter(p=>p.local_date?.startsWith(monthKey)&&
+  (brandFilter==='all'||socialAssets.find(a=>a.id===p.meta_asset_id)?.brand_id===brandIds[brandFilter])&&
+  !publishedJobIds.has(p.meta_asset_id+':'+p.external_id));
+ const localShown=filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth;
+ const remoteShown=filterDay?shownExternal.filter(x=>x.local_date===filterDay):shownExternal;
  const dateMap=useMemo(()=>{
   const map=new Map();
-  for(const item of visible){const list=map.get(item.scheduled_date)||[];list.push(item);map.set(item.scheduled_date,list)}
+  for(const item of visible){const list=map.get(item.scheduled_date)||[];list.push({...item,displayTitle:item.title});map.set(item.scheduled_date,list)}
+  for(const item of shownExternal){const list=map.get(item.local_date)||[];list.push({...item,displayTitle:item.format+' · '+item.network});map.set(item.local_date,list)}
   return map;
- },[visible]);
+ },[visible,shownExternal]);
  const addDate=d=>{if(d&&!dates.includes(d)){if(dates.length>=30){setMessage('Máximo 30 fechas por planificación.');return}setDates(v=>[...v,d].sort())}};
  const removeDate=d=>setDates(old=>old.filter(x=>x!==d));
  const repeat=days=>{const start=dates.at(0)||today;setDates(Array.from({length:4},(_,i)=>dateOffset(start,days*i)))};
@@ -271,6 +316,9 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    <button className="primary" onClick={()=>setShowComposer(v=>!v)}><Plus size={16}/> {showComposer?'Cerrar editor':'Crear lote de publicaciones'}</button>
   </section>
   {message&&<p className="hub-cal-notice" role="status">{message}</p>}
+  <div className="hub-meta-history-bar"><div><strong>Historial de Meta</strong><small>{syncingHistory?'Sincronizando cuentas...':historyFeedback||'Publicaciones y reels importados de Facebook e Instagram, incluso si se crearon fuera del Hub.'}</small></div><button className="secondary" disabled={syncingHistory} onClick={()=>syncMetaHistory(monthKey,true)}><RefreshCw size={15} className={syncingHistory?'mh-spin':''}/> {syncingHistory?'Sincronizando...':'Sincronizar desde Meta'}</button></div>
+  {historyWarnings.length>0&&<details className="hub-meta-history-warnings"><summary>Ver {historyWarnings.length} aviso(s) de sincronización</summary>{historyWarnings.map((w,i)=><p key={i}>{w}</p>)}</details>}
+  <p className="hub-meta-history-note">El historial importado es de solo lectura. Las historias que ya expiraron no pueden recuperarse retroactivamente; las detectadas desde ahora quedarán guardadas en el Hub.</p>
   {showComposer&&<section className="hub-composer">
    <div className="hub-composer-heading"><h3>1. Subí la creatividad una sola vez</h3><span>Biblioteca privada de Supabase</span></div>
    <label className="hub-upload"><UploadCloud size={23}/><strong>{uploading?'Subiendo archivos...':'Elegir imágenes o videos'}</strong><span>JPG, PNG, WebP, MP4 o MOV · hasta 50 MB cada uno · 10 archivos</span><input disabled={uploading||saving} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime" multiple onChange={e=>{uploadFiles(e.target.files);e.target.value=''}}/></label>
@@ -336,19 +384,28 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    <p className="hub-calendar-warning">Solo se utilizarán los perfiles exactos que seleccionaste. La historia solo figura como Publicada cuando Meta lo confirma.</p>
   </section>}
   <section className="hub-calendar-view">
-   <div className="hub-calendar-month"><button aria-label="Mes anterior" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}><ChevronLeft size={18}/></button><strong>{month.toLocaleDateString('es-AR',{month:'long',year:'numeric'})}</strong><button aria-label="Mes siguiente" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}><ChevronRight size={18}/></button><span>{inMonth.length} publicaciones</span><button className="secondary" onClick={refresh} disabled={loading}><RefreshCw size={14}/> Actualizar</button></div>
+   <div className="hub-calendar-month"><button aria-label="Mes anterior" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}><ChevronLeft size={18}/></button><strong>{month.toLocaleDateString('es-AR',{month:'long',year:'numeric'})}</strong><button aria-label="Mes siguiente" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}><ChevronRight size={18}/></button><span>{inMonth.length+shownExternal.length} contenidos</span><button className="secondary" onClick={()=>{refresh();loadMetaHistory(monthKey)}} disabled={loading}><RefreshCw size={14}/> Actualizar</button></div>
    <div className="hub-calendar-days">{['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(x=><span key={x}>{x}</span>)}</div>
-   <div className="hub-cal-grid">{calendarCells(month).map((d,i)=>{const key=dateKey(d);const dayItems=dateMap.get(key)||[];return <button key={i} className={'hub-cal-cell '+(d.getMonth()!==month.getMonth()?'outside ':'')+(key===today?'today ':'')+(filterDay===key?'chosen':'')} onClick={()=>setFilterDay(old=>old===key?'':key)}><strong>{d.getDate()}</strong>{dayItems.length>0&&<span data-count={dayItems.length} aria-label={dayItems.length+' publicaciones'}>{dayItems.length} publicaciones</span>}{dayItems.slice(0,2).map(x=><small key={x.id}>{x.title}</small>)}</button>})}</div>
+   <div className="hub-cal-grid">{calendarCells(month).map((d,i)=>{const key=dateKey(d);const dayItems=dateMap.get(key)||[];return <button key={i} className={'hub-cal-cell '+(d.getMonth()!==month.getMonth()?'outside ':'')+(key===today?'today ':'')+(filterDay===key?'chosen':'')} onClick={()=>setFilterDay(old=>old===key?'':key)}><strong>{d.getDate()}</strong>{dayItems.length>0&&<span data-count={dayItems.length} aria-label={dayItems.length+' publicaciones'}>{dayItems.length} publicaciones</span>}{dayItems.slice(0,2).map(x=><small key={x.id}>{x.displayTitle}</small>)}</button>})}</div>
   </section>
   <section className="hub-calendar-entries">
-   <div className="hub-cal-listhead"><h3>{filterDay?'Publicaciones del '+moneyDate(filterDay):'Publicaciones de '+month.toLocaleDateString('es-AR',{month:'long',year:'numeric'})}</h3><span>{(filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth).length} resultados</span><button className="secondary" onClick={()=>{const shown=(filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth).filter(x=>x.status==='draft'&&!jobs.some(j=>j.content_id===x.id)).slice(0,100);setSelectedRows(shown.length&&shown.every(x=>selectedRows.includes(x.id))?[]:shown.map(x=>x.id))}}>{selectedRows.length?'Quitar selección':'Seleccionar visibles'}</button>{selectedRows.length>0&&<button className="primary" disabled={saving} onClick={scheduleSelected}><Clock size={15}/> Programar {selectedRows.length} en Meta</button>}{selectedRows.length>0&&<button className="secondary" onClick={removeSelected}><Trash2 size={15}/> Eliminar {selectedRows.length}</button>}</div>
-   {(filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth).slice(0,150).map(p=><div key={p.id} className="hub-cal-entry">
+   <div className="hub-cal-listhead"><h3>{filterDay?'Publicaciones del '+moneyDate(filterDay):'Publicaciones de '+month.toLocaleDateString('es-AR',{month:'long',year:'numeric'})}</h3><span>{localShown.length+remoteShown.length} resultados · {remoteShown.length} de Meta</span><button className="secondary" onClick={()=>{const shown=(filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth).filter(x=>x.status==='draft'&&!jobs.some(j=>j.content_id===x.id)).slice(0,100);setSelectedRows(shown.length&&shown.every(x=>selectedRows.includes(x.id))?[]:shown.map(x=>x.id))}}>{selectedRows.length?'Quitar selección':'Seleccionar visibles'}</button>{selectedRows.length>0&&<button className="primary" disabled={saving} onClick={scheduleSelected}><Clock size={15}/> Programar {selectedRows.length} en Meta</button>}{selectedRows.length>0&&<button className="secondary" onClick={removeSelected}><Trash2 size={15}/> Eliminar {selectedRows.length}</button>}</div>
+   {localShown.slice(0,150).map(p=><div key={p.id} className="hub-cal-entry">
      <input aria-label={'Seleccionar '+p.title} type="checkbox" disabled={p.status!=='draft'||jobs.some(j=>j.content_id===p.id)} checked={selectedRows.includes(p.id)} onChange={e=>setSelectedRows(v=>e.target.checked?[...v,p.id]:v.filter(x=>x!==p.id))}/>
      {p.media_paths?.length&&mediaUrls[p.media_paths[0]]&&p.format!=='Reel'?<img src={mediaUrls[p.media_paths[0]]} alt="" loading="lazy"/>:<span className="hub-cal-entry-image"><ImageIcon size={19}/></span>}
      <div><strong>{p.title}</strong><small>{moneyDate(p.scheduled_date)} · {(p.scheduled_time||'18:00').slice(0,5)} · {BRAND_NAMES[allBrands.find(b=>b.id===p.brand_id)?.code]||'Marca'} · {socialAssets.find(a=>a.id===p.target_asset_id)?destinationLabel(socialAssets.find(a=>a.id===p.target_asset_id)):(p.target_asset_id?'Destino no disponible — revisá Meta':'Destino exacto sin definir')}</small><small>{(jobs.find(j=>j.content_id===p.id)?.status==='published'||p.status==='published')?'Publicado':(jobs.find(j=>j.content_id===p.id)?.status==='failed'||p.status==='failed')?'Error de publicación':jobs.find(j=>j.content_id===p.id)?.status==='publishing'?'En proceso en Meta':(jobs.find(j=>j.content_id===p.id)?.status==='queued'||p.status==='scheduled')?'Programado en Meta':p.publication_mode==='pending_authorization'?'Pendiente de autorización Meta':'Borrador'} · {(p.media_paths||[]).length} archivo(s)</small>{jobs.find(j=>j.content_id===p.id)?.error_message&&<small style={{color:'#c13245'}}>Error: {jobs.find(j=>j.content_id===p.id)?.error_message}</small>}</div>
      <button title="Replicar esta publicación en otras fechas" className="secondary" onClick={()=>clone(p)}><Copy size={16}/> Replicar</button>
    </div>)}
-   {!loading&&(filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth).length===0&&<p className="hub-calendar-empty">No hay publicaciones en estas fechas. Creá un lote para empezar.</p>}
+   {remoteShown.slice(0,150).map(p=>{
+   const asset=socialAssets.find(a=>a.id===p.meta_asset_id);
+   const permalink=(()=>{try{const u=new URL(p.permalink_url);return u.protocol==='https:'&&['facebook.com','www.facebook.com','instagram.com','www.instagram.com','m.facebook.com'].includes(u.hostname)?u.href:null}catch{return null}})();
+   return <div className="hub-cal-entry hub-external-entry" key={p.id}>
+    {p.thumbnail_url?<img src={p.thumbnail_url} alt="" loading="lazy" referrerPolicy="no-referrer"/>:<span className="hub-cal-entry-image"><ImageIcon size={19}/></span>}
+    <div><strong>{p.format} · {asset?.name||p.network}</strong><small>{moneyDate(p.local_date)} · {(p.local_time||'').slice(0,5)} · {p.network} · {p.status==='scheduled'?'Programado en Meta':'Publicado en Meta'}</small><small>{p.caption?.slice(0,150)||'Sin descripción'}</small></div>
+    {permalink&&<a className="secondary hub-meta-post-link" href={permalink} target="_blank" rel="noopener noreferrer">Ver en Meta</a>}
+   </div>;
+  })}
+  {!loading&&!syncingHistory&&localShown.length+remoteShown.length===0&&<p className="hub-calendar-empty">No se encontraron publicaciones en estas fechas. Si ya hay contenido en Business Suite, tocá «Sincronizar desde Meta» y revisá los avisos de acceso.</p>}
   </section>
  </div>;
 }
