@@ -396,7 +396,16 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
      <div><strong>{p.title}</strong><small>{moneyDate(p.scheduled_date)} · {(p.scheduled_time||'18:00').slice(0,5)} · {BRAND_NAMES[allBrands.find(b=>b.id===p.brand_id)?.code]||'Marca'} · {socialAssets.find(a=>a.id===p.target_asset_id)?destinationLabel(socialAssets.find(a=>a.id===p.target_asset_id)):(p.target_asset_id?'Destino no disponible — revisá Meta':'Destino exacto sin definir')}</small><small>{(jobs.find(j=>j.content_id===p.id)?.status==='published'||p.status==='published')?'Publicado':(jobs.find(j=>j.content_id===p.id)?.status==='failed'||p.status==='failed')?'Error de publicación':jobs.find(j=>j.content_id===p.id)?.status==='publishing'?'En proceso en Meta':(jobs.find(j=>j.content_id===p.id)?.status==='queued'||p.status==='scheduled')?'Programado en Meta':p.publication_mode==='pending_authorization'?'Pendiente de autorización Meta':'Borrador'} · {(p.media_paths||[]).length} archivo(s)</small>{jobs.find(j=>j.content_id===p.id)?.error_message&&<small style={{color:'#c13245'}}>Error: {jobs.find(j=>j.content_id===p.id)?.error_message}</small>}</div>
      <button title="Replicar esta publicación en otras fechas" className="secondary" onClick={()=>clone(p)}><Copy size={16}/> Replicar</button>
    </div>)}
-   {!loading&&(filterDay?visible.filter(x=>x.scheduled_date===filterDay):inMonth).length===0&&<p className="hub-calendar-empty">No hay publicaciones en estas fechas. Creá un lote para empezar.</p>}
+   {remoteShown.slice(0,150).map(p=>{
+   const asset=socialAssets.find(a=>a.id===p.meta_asset_id);
+   const permalink=(()=>{try{const u=new URL(p.permalink_url);return u.protocol==='https:'&&['facebook.com','www.facebook.com','instagram.com','www.instagram.com','m.facebook.com'].includes(u.hostname)?u.href:null}catch{return null}})();
+   return <div className="hub-cal-entry hub-external-entry" key={p.id}>
+    {p.thumbnail_url?<img src={p.thumbnail_url} alt="" loading="lazy" referrerPolicy="no-referrer"/>:<span className="hub-cal-entry-image"><ImageIcon size={19}/></span>}
+    <div><strong>{p.format} · {asset?.name||p.network}</strong><small>{moneyDate(p.local_date)} · {(p.local_time||'').slice(0,5)} · {p.network} · {p.status==='scheduled'?'Programado en Meta':'Publicado en Meta'}</small><small>{p.caption?.slice(0,150)||'Sin descripción'}</small></div>
+    {permalink&&<a className="secondary hub-meta-post-link" href={permalink} target="_blank" rel="noopener noreferrer">Ver en Meta</a>}
+   </div>;
+  })}
+  {!loading&&!syncingHistory&&localShown.length+remoteShown.length===0&&<p className="hub-calendar-empty">No se encontraron publicaciones en estas fechas. Si ya hay contenido en Business Suite, tocá «Sincronizar desde Meta» y revisá los avisos de acceso.</p>}
   </section>
  </div>;
 }
