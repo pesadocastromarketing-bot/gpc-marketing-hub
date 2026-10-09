@@ -42,7 +42,8 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
  const [syncingHistory,setSyncingHistory]=useState(false);
  const [historyFeedback,setHistoryFeedback]=useState('');
  const [historyWarnings,setHistoryWarnings]=useState([]);
- const syncedMonths=useRef(new Set());
+ const syncedMonths=useRef(new Map());
+ const monthSnapshots=useRef(new Map());
  const activeMonth=useRef('');
  const monthKey=dateKey(month).slice(0,7);
  useEffect(()=>{setSelectedBrands(old=>old.length?old:allBrands.slice(0,1).map(x=>x.code))},[organizationId]);
@@ -61,35 +62,50 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   if(!c.error)setJobs(c.data||[]);
   setLoading(false);
  }
- async function loadMetaHistory(key){
+ async function loadMetaHistory(key,force=false){
+  const cached=monthSnapshots.current.get(key);
+  if(!force&&cached&&Date.now()-cached.at<120000){
+   if(activeMonth.current===key)setExternalPosts(cached.data);
+   return;
+  }
   const start=key+'-01';
   const end=dateKey(new Date(Number(key.slice(0,4)),Number(key.slice(5,7)),1));
   const {data,error}=await client.from('hub_external_posts')
    .select('id,meta_asset_id,external_id,network,format,status,local_date,local_time,caption,thumbnail_url,permalink_url,last_synced_at')
    .eq('organization_id',organizationId).gte('local_date',start).lt('local_date',end)
    .order('local_date',{ascending:true}).limit(1200);
-  if(error){setHistoryFeedback('No se pudo leer el historial guardado: '+error.message);return}
+  if(error){if(activeMonth.current===key)setHistoryFeedback('No se pudo leer el historial guardado: '+error.message);return}
+  monthSnapshots.current.set(key,{at:Date.now(),data:data||[]});
   if(activeMonth.current===key)setExternalPosts(data||[]);
  }
  async function syncMetaHistory(key,manual=false){
-  if(syncedMonths.current.has(key)&&!manual)return;
-  syncedMonths.current.add(key);
-  setSyncingHistory(true);
-  if(manual)setHistoryFeedback('Consultando publicaciones anteriores en Meta...');
+  const previous=syncedMonths.current.get(key);
+  const ttl=key===argentinaNow().scheduled_date.slice(0,7)?3*60*1000:60*60*1000;
+  if(!manual&&previous&&Date.now()-previous<ttl)return;
+  syncedMonths.current.set(key,Date.now());
+  if(activeMonth.current===key){
+   setSyncingHistory(true);
+   if(manual)setHistoryFeedback('Consultando publicaciones anteriores en Meta...');
+  }
   try{
    const {data:{session}}=await client.auth.getSession();
    if(!session?.access_token)throw Error('Iniciá sesión para consultar Meta');
-   const response=await fetch('/api/social/history',{method:'POST',headers:{Authorization:'Bearer '+session.access_token,'Content-Type':'application/json'},body:JSON.stringify({month:key})});
+   const response=await fetch('/api/social/history',{method:'POST',headers:{Authorization:'Bearer '+session.access_token,'Content-Type':'application/json'},body:JSON.stringify({month:key,force:manual})});
    const data=await response.json();
    if(!response.ok)throw Error(data.error||'No se pudo consultar Meta');
-   setHistoryWarnings(data.warnings||[]);
-   setHistoryFeedback('Meta: '+data.imported+' registros consultados de '+data.assets_checked+' cuentas. '+(data.warnings?.length?'Algunas cuentas requieren revisión.':'Historial actualizado.'));
-   await loadMetaHistory(key);
-  }catch(e){syncedMonths.current.delete(key);setHistoryFeedback('Historial de Meta: '+String(e.message||e))}
-  finally{setSyncingHistory(false)}
+   if(activeMonth.current===key){
+    setHistoryWarnings(data.warnings||[]);
+    setHistoryFeedback(data.cached?'Historial actualizado desde la caché de Meta.':('Meta: '+data.imported+' contenidos revisados en '+data.assets_checked+' cuentas. '+(data.warnings?.length?'Algunas cuentas necesitan revisión.':'Información actualizada.')));
+   }
+   if(!data.cached)await loadMetaHistory(key,true);
+  }catch(e){
+   syncedMonths.current.delete(key);
+   if(activeMonth.current===key)setHistoryFeedback('Historial de Meta: '+String(e.message||e));
+  }finally{if(activeMonth.current===key)setSyncingHistory(false)}
  }
  useEffect(()=>{
-  activeMonth.current=monthKey;setFilterDay('');setExternalPosts([]);setHistoryFeedback('');setHistoryWarnings([]);
+  activeMonth.current=monthKey;setFilterDay('');setExternalPosts(monthSnapshots.current.get(monthKey)?.data||[]);
+  setHistoryFeedback('');setHistoryWarnings([]);setSyncingHistory(false);
   loadMetaHistory(monthKey).then(()=>syncMetaHistory(monthKey));
  },[monthKey,organizationId]);
  useEffect(()=>{refresh();let active=true;(async()=>{try{const {data:{session}}=await client.auth.getSession();const r=await fetch('/api/meta/assets-fast?view=social',{headers:{Authorization:'Bearer '+session?.access_token}});const j=await r.json();if(active&&r.ok)setSocialAssets((j.assets||[]).filter(a=>a.brand_id&&['page','instagram_account'].includes(a.kind)));}catch(_){}})();return()=>{active=false}},[organizationId]);
@@ -384,7 +400,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    <p className="hub-calendar-warning">Solo se utilizarán los perfiles exactos que seleccionaste. La historia solo figura como Publicada cuando Meta lo confirma.</p>
   </section>}
   <section className="hub-calendar-view">
-   <div className="hub-calendar-month"><button aria-label="Mes anterior" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}><ChevronLeft size={18}/></button><strong>{month.toLocaleDateString('es-AR',{month:'long',year:'numeric'})}</strong><button aria-label="Mes siguiente" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}><ChevronRight size={18}/></button><span>{inMonth.length+shownExternal.length} contenidos</span><button className="secondary" onClick={()=>{refresh();loadMetaHistory(monthKey)}} disabled={loading}><RefreshCw size={14}/> Actualizar</button></div>
+   <div className="hub-calendar-month"><button aria-label="Mes anterior" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}><ChevronLeft size={18}/></button><strong>{month.toLocaleDateString('es-AR',{month:'long',year:'numeric'})}</strong><button aria-label="Mes siguiente" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}><ChevronRight size={18}/></button><span>{inMonth.length+shownExternal.length} contenidos</span><button className="secondary" onClick={()=>{refresh();loadMetaHistory(monthKey,true)}} disabled={loading}><RefreshCw size={14}/> Actualizar</button></div>
    <div className="hub-calendar-days">{['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(x=><span key={x}>{x}</span>)}</div>
    <div className="hub-cal-grid">{calendarCells(month).map((d,i)=>{const key=dateKey(d);const dayItems=dateMap.get(key)||[];return <button key={i} className={'hub-cal-cell '+(d.getMonth()!==month.getMonth()?'outside ':'')+(key===today?'today ':'')+(filterDay===key?'chosen':'')} onClick={()=>setFilterDay(old=>old===key?'':key)}><strong>{d.getDate()}</strong>{dayItems.length>0&&<span data-count={dayItems.length} aria-label={dayItems.length+' publicaciones'}>{dayItems.length} publicaciones</span>}{dayItems.slice(0,2).map(x=><small key={x.id}>{x.displayTitle}</small>)}</button>})}</div>
   </section>
