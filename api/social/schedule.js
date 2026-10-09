@@ -5,8 +5,8 @@ export default async function handler(req,res){
  res.setHeader('Cache-Control','private, no-store');
  if(req.method!=='POST')return res.status(405).json({error:'Método no permitido'});
  const {ids,confirmation}=req.body||{};
- if(!Array.isArray(ids)||!ids.length||ids.length>100||!ids.every(x=>typeof x==='string'&&UUID.test(x))||new Set(ids).size!==ids.length||confirmation!=='PROGRAMAR')
- return res.status(400).json({error:'Seleccioná de 1 a 100 publicaciones y confirmá PROGRAMAR'});
+ if(!Array.isArray(ids)||!ids.length||ids.length>100||!ids.every(x=>typeof x==='string'&&UUID.test(x))||new Set(ids).size!==ids.length||!['PROGRAMAR','PUBLICAR_AHORA'].includes(confirmation))
+ return res.status(400).json({error:'Seleccioná de 1 a 100 publicaciones y confirmá el envío'});
  try{
  const bearer=req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];if(!bearer)return res.status(401).json({error:'Iniciá sesión'});
  const auth=createClient(process.env.VITE_SUPABASE_URL,process.env.VITE_SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:false}});
@@ -30,7 +30,14 @@ export default async function handler(req,res){
    if(!p.scheduled_date||!p.scheduled_time)throw Error('Falta fecha u hora');
    const raw=p.scheduled_date+'T'+String(p.scheduled_time).slice(0,5)+':00-03:00';
    scheduled=new Date(raw);
-   if(!Number.isFinite(scheduled.getTime())||scheduled.getTime()<Date.now()+2*60*1000)throw Error('Elegí una fecha al menos dos minutos en el futuro');
+   if(!Number.isFinite(scheduled.getTime()))throw Error('Fecha u hora inválida');
+   if(confirmation==='PUBLICAR_AHORA'){
+    // Immediate mode is reserved for Instagram stories. Every item still has its own
+    // scheduled slot so a batch is processed in the user's chosen sequence.
+    if(channel!=='Instagram'||p.format!=='Historia')throw Error('Publicar ahora está disponible para historias de Instagram');
+    if(scheduled.getTime()>Date.now()+15*60*1000)throw Error('Reintentá el envío: la hora inmediata ya no es válida');
+    scheduled=new Date(Math.max(Date.now(),scheduled.getTime()));
+   }else if(scheduled.getTime()<Date.now()+2*60*1000)throw Error('Elegí una fecha al menos dos minutos en el futuro');
    if(scheduled.getTime()>Date.now()+365*86400000)throw Error('La programación no puede superar un año');
    const kind=channel==='Facebook'?'page':'instagram_account';
    const candidates=(assets||[]).filter(a=>a.brand_id===p.brand_id&&a.kind===kind);
@@ -67,7 +74,7 @@ export default async function handler(req,res){
    if(jobError)throw Error(jobError.code==='23505'?'Esta publicación ya está programada':jobError.message);
    await db.from('hub_content').update({status:'scheduled',target_asset_id:asset.id}).eq('id',p.id).eq('organization_id',membership.organization_id);
   }catch(e){error=String(e.message||e).slice(0,180)}
-  results.push({id:p.id,status:error?'error':'scheduled',message:error||'Programada'});
+  results.push({id:p.id,status:error?'error':'scheduled',message:error||(confirmation==='PUBLICAR_AHORA'?'En cola de publicación inmediata':'Programada')});
  }
  return res.status(200).json({results,scheduled:results.filter(x=>x.status==='scheduled').length,total:ids.length});
  }catch(e){return res.status(500).json({error:'Error al programar: '+String(e.message||e).slice(0,150)})}
