@@ -67,7 +67,17 @@ export default async function handler(req,res){
    if(channel==='Instagram'){
     const authorized=(tokens||[]).some(t=>t.organization_id===membership.organization_id&&t.meta_user_id===asset.metadata?.meta_user_id&&
      (!t.expires_at||Date.parse(t.expires_at)>Date.now())&&(t.scopes||[]).includes('instagram_content_publish')&&(t.scopes||[]).includes('instagram_basic'));
-    if(!authorized)throw Error('El perfil @'+asset.display_name+' no tiene instagram_content_publish autorizado. Conectá ese Instagram exacto desde Configuración; el permiso de otros perfiles no sirve.');
+    let directAuthorized=false;
+    if(!authorized){
+     const {data:direct,error:directError}=await db.schema('hub_private').from('instagram_direct_connections')
+      .select('instagram_scoped_id,expires_at,username,scopes')
+      .eq('organization_id',membership.organization_id).eq('asset_id',asset.id).maybeSingle();
+     if(directError)throw directError;
+     directAuthorized=Boolean(direct&&Date.parse(direct.expires_at)>Date.now()&&
+      String(direct.username).toLowerCase()===String(asset.display_name).toLowerCase()&&
+      (direct.scopes||[]).includes('instagram_business_content_publish'));
+    }
+    if(!authorized&&!directAuthorized)throw Error('El perfil @'+asset.display_name+' no tiene permiso de publicación. Conectá ese Instagram exacto desde Configuración (Facebook Login o Instagram Login).');
    }
    const {error:jobError}=await db.from('hub_publication_jobs').insert({
     organization_id:membership.organization_id,content_id:p.id,meta_asset_id:asset.id,scheduled_for:scheduled.toISOString(),status:'queued'
