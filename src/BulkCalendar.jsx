@@ -22,6 +22,10 @@ const storySlot=(date,time,index)=>{
  const argentinaTime=new Date(original+index*60_000-3*60*60_000).toISOString();
  return {scheduled_date:argentinaTime.slice(0,10),scheduled_time:argentinaTime.slice(11,16)};
 };
+function argentinaNow(){
+ const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(a=>[a.type,a.value]));
+ return {scheduled_date:p.year+'-'+p.month+'-'+p.day,scheduled_time:p.hour+':'+p.minute};
+}
 function moneyDate(s){return new Date(s+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'short'})}
 
 export default function BulkCalendar({client,user,organizationId,brandIds,brandFilter,onChangeCount,openSignal=0}){
@@ -118,7 +122,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
  const selectedBrandIds=new Set(selectedBrands.map(code=>brandIds[code]).filter(Boolean));
  const selectedTargets=socialAssets.filter(a=>exactDestinations.includes(a.id)&&selectedBrandIds.has(a.brand_id)&&selectedChannels.includes(assetChannel(a)));
  const destinationCount=selectedTargets.length;
- const estimated=dates.length*destinationCount*(format==='Historia'?selectedMedia.length:1);
+ const estimated=(planMode==='now'?1:dates.length)*destinationCount*(format==='Historia'?selectedMedia.length:1);
  function moveStory(path,direction){
   setSelectedMedia(old=>{
    const index=old.indexOf(path),next=index+direction;
@@ -136,9 +140,11 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   if(!checked)setExactDestinations(old=>old.filter(assetId=>assetChannel(socialAssets.find(a=>a.id===assetId))!==channel));
  }
  async function saveBatch(){
-  if(!title.trim()||!dates.length||!selectedBrands.length||!selectedChannels.length||!selectedMedia.length){
-   setMessage('Completá título, creatividad, fechas, concesionarios y redes sociales.');return;
-  }
+  if(!selectedMedia.length){setMessage('Seleccioná una foto o video para publicar.');return}
+  if(!selectedBrands.length){setMessage('Elegí el concesionario.');return}
+  if(!selectedChannels.length){setMessage('Elegí la red social.');return}
+  if(planMode!=='now'&&!dates.length){setMessage('Elegí la fecha para programar.');return}
+  if(planMode==='now'&&format!=='Historia'){setMessage('Publicar ahora está disponible para historias de Instagram.');return}
   if(!selectedTargets.length){
    setMessage('Elegí al menos una cuenta real de Instagram o una página de Facebook. Si no aparece, vinculala desde Configuración → Meta.');return;
   }
@@ -158,9 +164,14 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   if(format==='Imagen'&&files.some(m=>isVideoMime(m.mime_type))){
    setMessage('El formato Imagen requiere imágenes; elegí Reel o Historia para video.');return
   }
-  if(dates.some(d=>d<today)){setMessage('No se pueden planificar publicaciones en fechas pasadas.');return}
+  if(planMode!=='now'&&dates.some(d=>d<today)){setMessage('No se pueden planificar publicaciones en fechas pasadas.');return}
   const preciseTargets=selectedTargets.map(a=>'• '+(allBrands.find(b=>b.id===a.brand_id)?.name||'Unidad sin nombre')+' — '+destinationLabel(a)).join('\n');
-  if(!window.confirm('¿Crear '+estimated+(format==='Historia'?' historias':' publicaciones')+' en '+dates.length+' fecha(s)?\n\nSE PUBLICARÁ EN ESTAS CUENTAS EXACTAS:\n'+preciseTargets+'\n\n'+(format==='Historia'?'Cada archivo será una historia independiente, programada con un minuto de separación en el orden seleccionado.\n\n':'')+(planMode==='pending_authorization'?'El HUB intentará programar AUTOMÁTICAMENTE solo estas cuentas autorizadas. Las que no tengan permisos quedarán pendientes.':'Quedarán como borradores y NO se publicarán.')))return;
+  const operation=planMode==='now'
+   ?'PUBLICAR AHORA: se enviará a la cola inmediata (próximo minuto aproximadamente). Meta debe autorizar la publicación.'
+   :planMode==='pending_authorization'
+    ?'PROGRAMAR: Meta recibirá las publicaciones en las fechas seleccionadas.'
+    :'GUARDAR BORRADOR: no se enviará contenido a Meta.';
+  if(!window.confirm('¿Crear '+estimated+(format==='Historia'?' historias':' publicaciones')+'?\n\nDESTINOS EXACTOS:\n'+preciseTargets+'\n\n'+operation))return;
   setSaving(true);setMessage('');
   const batchId=id();
   const targets=selectedTargets.map(a=>({brand_id:a.brand_id,channel:assetChannel(a),target_asset_id:a.id}));
@@ -176,13 +187,16 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
      }else preparedMedia.push(file.storage_path);
     }
    }
-   const rows=dates.flatMap(date=>targets.flatMap(target=>{
+   const immediateTime=planMode==='now'?argentinaNow():null;
+   const baseDates=immediateTime?[immediateTime.scheduled_date]:dates;
+   const generatedTitle=title.trim()||(format==='Historia'?'Historia de Instagram':format+' sin título');
+   const rows=baseDates.flatMap(date=>targets.flatMap(target=>{
     const paths=format==='Historia'?preparedMedia:[preparedMedia];
     return paths.map((path,index)=>{
-     const slot=format==='Historia'?storySlot(date,time,index):{scheduled_date:date,scheduled_time:time};
+     const slot=format==='Historia'?storySlot(date,immediateTime?.scheduled_time||time,index):{scheduled_date:date,scheduled_time:time};
      return {
       organization_id:organizationId,brand_id:target.brand_id,target_asset_id:target.target_asset_id,
-      title:format==='Historia'?title.trim()+' · Historia '+(index+1)+'/'+preparedMedia.length:title.trim(),
+      title:format==='Historia'?generatedTitle+' · '+(index+1)+'/'+preparedMedia.length:generatedTitle,
       copy_text:copy.trim(),format,...slot,channels:[target.channel],
       media_paths:format==='Historia'?[path]:path,
       created_by:user.id,status:'draft',publication_mode:planMode,timezone:'America/Argentina/Buenos_Aires',batch_id:batchId
@@ -192,18 +206,18 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    const {data:created,error}=await client.from('hub_content').insert(rows).select('id');
    if(error)throw Error(error.message);
    let summary='Se crearon '+rows.length+' publicaciones en Supabase.';
-   if(planMode==='pending_authorization'&&created?.length){
+   if(planMode!=='draft'&&created?.length){
     const {data:{session}}=await client.auth.getSession();
     const groups=[];for(let i=0;i<created.length;i+=100)groups.push(created.slice(i,i+100).map(x=>x.id));
     let success=0,failed=0,details=[];
     for(const ids of groups){
-     const response=await fetch('/api/social/schedule',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session?.access_token},body:JSON.stringify({ids,confirmation:'PROGRAMAR'})});
+     const response=await fetch('/api/social/schedule',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session?.access_token},body:JSON.stringify({ids,confirmation:planMode==='now'?'PUBLICAR_AHORA':'PROGRAMAR'})});
      const result=await response.json();
      if(!response.ok){failed+=ids.length;details.push(result.error||'Meta no autorizó la programación');continue}
      success+=result.scheduled||0;failed+=(result.total||ids.length)-(result.scheduled||0);
      details.push(...(result.results||[]).filter(x=>x.status==='error').slice(0,3).map(x=>x.message));
     }
-    summary+=' Programadas automáticamente: '+success+'. Pendientes: '+failed+'.'+(details.length?' '+[...new Set(details)].slice(0,3).join(' | '):'');
+    summary+=(planMode==='now'?' En cola para publicar ahora: ':' Programadas: ')+success+'. Sin programar: '+failed+'.'+(details.length?' '+[...new Set(details)].slice(0,3).join(' | '):'')+(planMode==='now'&&success?' El estado cambiará a Publicado cuando Meta lo confirme.':'');
    }
    setMessage(summary);setShowComposer(false);setDates([dateOffset(today,1)]);setSelectedMedia([]);setExactDestinations([]);setTitle('');setCopy('');
    await refresh();
@@ -263,13 +277,13 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
    {media.length>0&&<div className="hub-media-library"><strong>Archivos recientes (tocá para usar)</strong><div className="hub-media-grid">{media.slice(0,30).map(file=><button className={selectedMedia.includes(file.storage_path)?'selected':''} key={file.storage_path} onClick={()=>setSelectedMedia(current=>current.includes(file.storage_path)?current.filter(p=>p!==file.storage_path):current.length<10?[...current,file.storage_path]:current)}>
     {isVideoMime(file.mime_type)?<Video size={25}/>:mediaUrls[file.storage_path]?<img src={mediaUrls[file.storage_path]} alt={file.filename}/>:<ImageIcon size={23}/>}
     <small title={file.filename}>{file.filename}</small>{selectedMedia.includes(file.storage_path)&&<Check size={17} className="hub-media-check"/>}</button>)}</div></div>}
-   <div className="hub-composer-two"><label>Título interno<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Ej. Amarok tasa 0%"/></label><label>Formato<select value={format} onChange={e=>{const next=e.target.value;setFormat(next);if(next==='Historia'){setSelectedChannels(['Instagram']);setExactDestinations(old=>old.filter(assetId=>assetChannel(socialAssets.find(a=>a.id===assetId))==='Instagram'))}}}><option>Imagen</option><option>Carrusel</option><option>Reel</option><option>Historia</option></select></label></div>
+   <div className="hub-composer-two"><label>Título interno (opcional)<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Podés dejarlo vacío"/></label><label>Formato<select value={format} onChange={e=>{const next=e.target.value;setFormat(next);if(next==='Historia'){setPlanMode('now');setSelectedChannels(['Instagram']);setExactDestinations(old=>old.filter(assetId=>assetChannel(socialAssets.find(a=>a.id===assetId))==='Instagram'))}else if(planMode==='now')setPlanMode('draft')}}><option>Imagen</option><option>Carrusel</option><option>Reel</option><option>Historia</option></select></label></div>
    {format==='Historia'&&<p className="hub-calendar-warning">Historias de Instagram: seleccioná hasta 10 fotos o videos juntos (JPG, PNG, WebP, MP4 o MOV). Se creará una historia independiente por archivo, en el orden indicado abajo, con un minuto de diferencia entre publicaciones. Los PNG/WebP se convierten a JPG. El copy no se superpone a la historia: incluilo en el diseño.</p>}
    {format==='Historia'&&selectedMedia.length>0&&<div className="hub-story-order"><strong>Orden de las historias ({selectedMedia.length})</strong><ol>{selectedMedia.map((path,index)=>{
     const file=media.find(m=>m.storage_path===path);
     return <li key={path}><span>{index+1}. {file?.filename||'Archivo seleccionado'}</span><div><button type="button" className="secondary" disabled={index===0||saving} aria-label={'Subir historia '+(index+1)} onClick={()=>moveStory(path,-1)}>↑</button><button type="button" className="secondary" disabled={index===selectedMedia.length-1||saving} aria-label={'Bajar historia '+(index+1)} onClick={()=>moveStory(path,1)}>↓</button><button type="button" className="secondary" disabled={saving} aria-label={'Quitar historia '+(index+1)} onClick={()=>setSelectedMedia(current=>current.filter(p=>p!==path))}>×</button></div></li>;
    })}</ol></div>}
-   <label className="hub-wide-label">Copy de la publicación<textarea rows="3" placeholder="Texto que se reutilizará en todas las fechas y cuentas..." value={copy} onChange={e=>setCopy(e.target.value)}/></label>
+   <label className="hub-wide-label">Copy (opcional, no aparece escrito en la historia)<textarea rows="3" placeholder="Texto que se reutilizará en todas las fechas y cuentas..." value={copy} onChange={e=>setCopy(e.target.value)}/></label>
    <div className="hub-composer-heading"><h3>2. Elegí los concesionarios y cada cuenta exacta</h3><span>Oficiales y paralelas, siempre por separado</span></div>
    <div className="hub-business-units">
     {[{type:'dealership',label:'Concesionarios (6)'},{type:'used',label:'Usados (2)'}].map(group=><div key={group.type}>
@@ -302,18 +316,24 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
     </div>}
     <small className="hub-destination-note">El HUB guardará el ID exacto de Meta de cada destino, no solo el nombre del concesionario.</small>
    </div>
-   <div className="hub-composer-heading"><h3>3. Elegí todas las fechas</h3><span>Hora de Argentina (UTC−3)</span></div>
-   <div className="hub-date-controls"><input type="date" min={today} value={manualDate} onChange={e=>setManualDate(e.target.value)}/><button className="secondary" onClick={()=>addDate(manualDate)}>Agregar fecha</button><input type="time" value={time} onChange={e=>setTime(e.target.value)}/></div>
-   <div className="hub-shortcuts"><button onClick={()=>addDate(today)}>Hoy</button><button onClick={()=>addDate(dateOffset(today,1))}>Mañana</button><button onClick={()=>addDate(dateOffset(today,7))}>+7 días</button><button onClick={()=>addDate(dateOffset(today,14))}>+14 días</button><button onClick={()=>repeat(7)}>4 semanas seguidas</button><button onClick={()=>repeat(30)}>4 meses seguidos</button></div>
-   <div className="hub-date-pills">{dates.map(d=><button key={d} onClick={()=>removeDate(d)}>{moneyDate(d)} <span>×</span></button>)}</div>
-   <div className="hub-composer-heading"><h3>4. Guardá todas las publicaciones</h3></div>
-   <div className="hub-check-list"><label><input type="radio" checked={planMode==='draft'} onChange={()=>setPlanMode('draft')}/>Guardar como borrador (NO publica)</label><label><input type="radio" checked={planMode==='pending_authorization'} onChange={()=>setPlanMode('pending_authorization')}/>Crear y programar automáticamente donde Meta lo permita</label></div>
+   <div className="hub-composer-heading"><h3>3. ¿Cuándo querés publicar?</h3><span>Hora de Argentina (UTC−3)</span></div>
+   <div className="hub-check-list">
+    {format==='Historia'&&<label><input type="radio" checked={planMode==='now'} onChange={()=>setPlanMode('now')}/>Publicar ahora (sin fecha ni título)</label>}
+    <label><input type="radio" checked={planMode==='pending_authorization'} onChange={()=>setPlanMode('pending_authorization')}/>Programar para una fecha</label>
+    <label><input type="radio" checked={planMode==='draft'} onChange={()=>setPlanMode('draft')}/>Guardar borrador (no publica)</label>
+   </div>
+   {planMode==='now'?<p className="hub-calendar-warning">La publicación se coloca en la cola inmediata, procesada aproximadamente cada minuto. La salida real depende de los permisos de Meta; si falta autorización, verás el motivo.</p>:<>
+    <div className="hub-date-controls"><input type="date" min={today} value={manualDate} onChange={e=>setManualDate(e.target.value)}/><button className="secondary" onClick={()=>addDate(manualDate)}>Agregar fecha</button><input type="time" value={time} onChange={e=>setTime(e.target.value)}/></div>
+    <div className="hub-shortcuts"><button onClick={()=>addDate(today)}>Hoy</button><button onClick={()=>addDate(dateOffset(today,1))}>Mañana</button><button onClick={()=>addDate(dateOffset(today,7))}>+7 días</button><button onClick={()=>addDate(dateOffset(today,14))}>+14 días</button><button onClick={()=>repeat(7)}>4 semanas seguidas</button><button onClick={()=>repeat(30)}>4 meses seguidos</button></div>
+    <div className="hub-date-pills">{dates.map(d=><button key={d} onClick={()=>removeDate(d)}>{moneyDate(d)} <span>×</span></button>)}</div>
+   </>}
+   <div className="hub-composer-heading"><h3>4. Confirmá el envío</h3></div>
    <div className="hub-destination-review"><strong>Se va a publicar en:</strong>
     {selectedTargets.length?<ul>{selectedTargets.map(a=><li key={a.id}><strong>{allBrands.find(b=>b.id===a.brand_id)?.name||'Unidad'}</strong> · {destinationLabel(a)}</li>)}</ul>:<p>Seleccioná la cuenta exacta arriba para continuar. No se elegirá ningún perfil por defecto.</p>}
    </div>
-   <div className="hub-submit"><div><strong>{estimated} {format==='Historia'?'historias':'publicaciones'}</strong><small>{dates.length} fechas × {destinationCount} cuenta(s) exacta(s){format==='Historia'?' × '+selectedMedia.length+' archivo(s)':''}</small></div><button className="primary" disabled={saving||uploading||estimated===0} onClick={saveBatch}>{saving?'Guardando...':(planMode==='pending_authorization'?'Crear y programar ':'Guardar ')+estimated+(planMode==='pending_authorization'?' publicación(es)':' borrador(es)')}</button></div>
+   <div className="hub-submit"><div><strong>{estimated} {format==='Historia'?'historias':'publicaciones'}</strong><small>{planMode==='now'?'Ahora':dates.length+' fecha(s)'} × {destinationCount} cuenta(s) exacta(s){format==='Historia'?' × '+selectedMedia.length+' archivo(s)':''}</small></div><button className="primary" disabled={saving||uploading||estimated===0} onClick={saveBatch}>{saving?'Procesando...':(planMode==='now'?'Publicar ahora ':planMode==='pending_authorization'?'Crear y programar ':'Guardar borradores: ')+estimated+(format==='Historia'?' historia(s)':' publicación(es)')}</button></div>
    {message&&<p className="hub-cal-notice" role="alert" aria-live="assertive">{message}</p>}
-   <p className="hub-calendar-warning">No se publicará en otros perfiles del concesionario: solo en los destinos exactos que seleccionaste arriba. «Crear y programar» requiere permisos de Meta; si faltan, las publicaciones quedarán sin programar. «Borradores» no publica nada.</p>
+   <p className="hub-calendar-warning">Solo se utilizarán los perfiles exactos que seleccionaste. La historia solo figura como Publicada cuando Meta lo confirma.</p>
   </section>}
   <section className="hub-calendar-view">
    <div className="hub-calendar-month"><button aria-label="Mes anterior" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}><ChevronLeft size={18}/></button><strong>{month.toLocaleDateString('es-AR',{month:'long',year:'numeric'})}</strong><button aria-label="Mes siguiente" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}><ChevronRight size={18}/></button><span>{inMonth.length} publicaciones</span><button className="secondary" onClick={refresh} disabled={loading}><RefreshCw size={14}/> Actualizar</button></div>
