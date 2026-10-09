@@ -104,8 +104,7 @@ export default async function handler(req,res){
   const {data:tasks,error}=await db.rpc('hub_claim_publication_jobs',{p_limit:5});
   if(error)throw error;
   const {data:connections,error:tokensError}=await db.rpc('hub_social_tokens');if(tokensError)throw tokensError;
-  const {data:igDirect,error:igError}=await db.schema('hub_private').from('instagram_direct_connections')
-   .select('organization_id,asset_id,instagram_scoped_id,username,token_ciphertext,token_iv,scopes,expires_at');
+  const {data:igDirect,error:igError}=await db.rpc('hub_ig_direct_tokens');
   if(igError)throw igError;
   const outcome=[];
   for(const job of tasks||[]){
