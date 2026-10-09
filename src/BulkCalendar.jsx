@@ -46,7 +46,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
  const monthSnapshots=useRef(new Map());
  const activeMonth=useRef('');
  const monthKey=dateKey(month).slice(0,7);
- useEffect(()=>{setSelectedBrands(old=>old.length?old:allBrands.slice(0,1).map(x=>x.code))},[organizationId]);
+ useEffect(()=>{monthSnapshots.current.clear();syncedMonths.current.clear();setSelectedBrands(old=>old.length?old:allBrands.slice(0,1).map(x=>x.code))},[organizationId]);
  useEffect(()=>{if(openSignal>0)setShowComposer(true)},[openSignal]);
  async function refresh(){
   setLoading(true);
