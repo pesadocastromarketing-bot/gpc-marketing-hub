@@ -52,7 +52,7 @@ export default function BulkCalendar({client,user,organizationId,brandIds,brandF
   const [a,b,c]=await Promise.all([
    client.from('hub_content').select('id,title,copy_text,format,scheduled_date,scheduled_time,channels,brand_id,target_asset_id,media_paths,batch_id,publication_mode,status').eq('organization_id',organizationId).order('scheduled_date',{ascending:true}).limit(1500),
    client.from('hub_media').select('storage_path,filename,mime_type,size_bytes').eq('organization_id',organizationId).order('created_at',{ascending:false}).limit(100),
-   client.from('hub_publication_jobs').select('id,content_id,status,error_message,external_post_id,scheduled_for').eq('organization_id',organizationId).order('created_at',{ascending:false}).limit(1000)
+   client.from('hub_publication_jobs').select('id,content_id,meta_asset_id,status,error_message,external_post_id,scheduled_for').eq('organization_id',organizationId).order('created_at',{ascending:false}).limit(1000)
   ]);
   if(a.error)setMessage('No se pudo cargar el calendario: '+a.error.message);
   else {setItems(a.data||[]);onChangeCount?.((a.data||[]).length)}
