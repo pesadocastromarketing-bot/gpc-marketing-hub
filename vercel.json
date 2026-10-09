@@ -4,6 +4,10 @@
     {
       "path": "/api/social/cron",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/instagram/refresh",
+      "schedule": "0 9 * * *"
     }
   ],
   "functions": {
