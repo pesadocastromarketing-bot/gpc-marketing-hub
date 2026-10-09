@@ -69,10 +69,9 @@ export default async function handler(req,res){
      (!t.expires_at||Date.parse(t.expires_at)>Date.now())&&(t.scopes||[]).includes('instagram_content_publish')&&(t.scopes||[]).includes('instagram_basic'));
     let directAuthorized=false;
     if(!authorized){
-     const {data:direct,error:directError}=await db.schema('hub_private').from('instagram_direct_connections')
-      .select('instagram_scoped_id,expires_at,username,scopes')
-      .eq('organization_id',membership.organization_id).eq('asset_id',asset.id).maybeSingle();
+     const {data:allDirect,error:directError}=await db.rpc('hub_ig_direct_tokens');
      if(directError)throw directError;
+     const direct=(allDirect||[]).find(d=>d.organization_id===membership.organization_id&&d.asset_id===asset.id);
      directAuthorized=Boolean(direct&&Date.parse(direct.expires_at)>Date.now()&&
       String(direct.username).toLowerCase()===String(asset.display_name).toLowerCase()&&
       (direct.scopes||[]).includes('instagram_business_content_publish'));
