@@ -16,15 +16,9 @@ export default async function handler(req,res){
   return done(res,{instagram_error:'Instagram API no configurada'});
  try{
   const db=admin();
-  const {data:records,error:stateErr}=await db.schema('hub_private').from('instagram_login_states')
-   .select('state_hash,organization_id,asset_id,requested_by,expires_at,consumed_at')
-   .eq('state_hash',digest(state)).is('consumed_at',null).gt('expires_at',new Date().toISOString()).limit(1);
-  if(stateErr||records?.length!==1)throw Error('Autorización expirada. Reintentá desde el Hub.');
+  const {data:records,error:stateErr}=await db.rpc('hub_ig_login_state_consume',{p_hash:digest(state)});
+  if(stateErr||records?.length!==1)throw Error('Autorización expirada o ya utilizada. Reintentá desde el Hub.');
   const record=records[0];
-  // Burn state before exchanging token: one-time code, replay resistant.
-  const {data:burn,error:burnErr}=await db.schema('hub_private').from('instagram_login_states').update({consumed_at:new Date().toISOString()})
-   .eq('state_hash',record.state_hash).is('consumed_at',null).select('state_hash').maybeSingle();
-  if(burnErr||!burn)throw Error('Esta autorización ya fue utilizada');
   const shortBody=new URLSearchParams({client_id:process.env.INSTAGRAM_APP_ID,
    client_secret:process.env.INSTAGRAM_APP_SECRET,
    grant_type:'authorization_code',redirect_uri:BASE_URL+'/api/instagram/callback',
@@ -57,7 +51,11 @@ export default async function handler(req,res){
    scopes:['instagram_business_basic','instagram_business_content_publish'],
    expires_at:new Date(Date.now()+Number(long.expires_in)*1000).toISOString(),connected_by:record.requested_by,
    connected_at:new Date().toISOString()};
-  const {error:saveError}=await db.schema('hub_private').from('instagram_direct_connections').upsert(row,{onConflict:'organization_id,asset_id'});
+  const {error:saveError}=await db.rpc('hub_ig_direct_save',{
+   p_org:row.organization_id,p_asset:row.asset_id,p_ig_id:row.instagram_scoped_id,
+   p_username:row.username,p_cipher:row.token_ciphertext,p_iv:row.token_iv,
+   p_scopes:row.scopes,p_exp:row.expires_at,p_user:row.connected_by
+  });
   if(saveError)throw saveError;
   return done(res,{instagram_connected:1,instagram_user:exactActual});
  }catch(e){return done(res,{instagram_error:String(e.message||e).slice(0,180)})}
